@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { FileText, Loader2, Plus, Settings2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,6 @@ import JobCard from "./JobCard";
 import JobDrawer from "./JobDrawer";
 import NewOfferModal from "./NewOfferModal";
 import ToolsPanel from "./ToolsPanel";
-import DigestDialog from "./DigestDialog";
 
 interface GraderProps {
   configured: boolean;
@@ -48,7 +48,6 @@ export default function Board({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showTools, setShowTools] = useState(false);
-  const [showDigest, setShowDigest] = useState(false);
   const [gradingIds, setGradingIds] = useState<Set<string>>(new Set());
   const [gradingAll, setGradingAll] = useState(false);
   const [dragOver, setDragOver] = useState<JobStatus | null>(null);
@@ -213,9 +212,13 @@ export default function Board({
             <Settings2 />
             Tools
           </Button>
-          <Button variant="outline" onClick={() => setShowDigest(true)}>
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/digests" />}
+          >
             <FileText />
-            Digest
+            Digests
           </Button>
           <Button
             variant="outline"
@@ -321,7 +324,6 @@ export default function Board({
         onOpenChange={setShowTools}
         onChanged={refresh}
       />
-      <DigestDialog open={showDigest} onOpenChange={setShowDigest} />
     </div>
   );
 }

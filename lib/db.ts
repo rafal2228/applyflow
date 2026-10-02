@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   source TEXT NOT NULL,
   source_id TEXT NOT NULL,
   url TEXT NOT NULL,
+  source_url TEXT,
   title TEXT NOT NULL,
   company TEXT NOT NULL,
   location TEXT,
@@ -53,11 +54,37 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_grade ON jobs(grade);
+
+CREATE TABLE IF NOT EXISTS market_snapshots (
+  day TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  count INTEGER NOT NULL,
+  PRIMARY KEY (day, keyword, scope)
+);
+
+CREATE TABLE IF NOT EXISTS digests (
+  day TEXT PRIMARY KEY,
+  markdown TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 type Row = Record<string, unknown>;
 
 const g = globalThis as unknown as { __applyflowDb?: DatabaseSync };
+
+/** Idempotent column adds for DBs created before a column existed. */
+function migrate(d: DatabaseSync): void {
+  const cols = (d.prepare("PRAGMA table_info(jobs)").all() as Row[]).map(
+    (r) => r.name as string,
+  );
+  if (!cols.includes("source_url")) {
+    d.exec("ALTER TABLE jobs ADD COLUMN source_url TEXT");
+    d.exec("UPDATE jobs SET source_url = url WHERE source_url IS NULL");
+  }
+}
 
 function db(): DatabaseSync {
   if (g.__applyflowDb) return g.__applyflowDb;
@@ -65,6 +92,7 @@ function db(): DatabaseSync {
   const d = new DatabaseSync(DB_PATH);
   d.exec("PRAGMA journal_mode = WAL;");
   d.exec(SCHEMA);
+  migrate(d);
   g.__applyflowDb = d;
   if (fresh) console.warn(`[applyflow] created new jobs.db at ${DB_PATH}`);
   return d;
@@ -76,6 +104,7 @@ function rowToJob(r: Row): JobRow {
     source: r.source as string,
     sourceId: r.source_id as string,
     url: r.url as string,
+    sourceUrl: (r.source_url as string) ?? null,
     title: r.title as string,
     company: r.company as string,
     location: (r.location as string) ?? null,
@@ -192,7 +221,8 @@ export function createJob(input: NewJobInput): CreateResult {
   const d = db();
   const title = input.title.trim();
   const company = input.company.trim();
-  const url = (input.url ?? "").trim();
+  const url = input.url.trim();
+  const sourceUrl = (input.sourceUrl ?? input.url).trim() || null;
   const key = dedupKey(company, title);
 
   const dupe = d.prepare("SELECT * FROM jobs WHERE dedup_key = ?").get(key) as
@@ -206,15 +236,16 @@ export function createJob(input: NewJobInput): CreateResult {
   const status: JobStatus = input.status ?? "shortlisted";
 
   d.prepare(
-    `INSERT INTO jobs (id, source, source_id, url, title, company, location,
-       remote, description, tags, salary_text, discovered_at, dedup_key, raw,
-       status, last_seen_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO jobs (id, source, source_id, url, source_url, title, company,
+       location, remote, description, tags, salary_text, discovered_at,
+       dedup_key, raw, status, last_seen_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     id,
     "manual",
     sourceId,
     url,
+    sourceUrl,
     title,
     company,
     (input.location ?? "").trim() || null,
@@ -300,15 +331,16 @@ export function upsertJob(job: NormalizedJob): UpsertResult {
     return "duplicate";
   }
   d.prepare(
-    `INSERT INTO jobs (id, source, source_id, url, title, company, location,
-       remote, geo, description, tags, salary_text, posted_at, discovered_at,
-       dedup_key, raw, last_seen_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO jobs (id, source, source_id, url, source_url, title, company,
+       location, remote, geo, description, tags, salary_text, posted_at,
+       discovered_at, dedup_key, raw, last_seen_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     job.id,
     job.source,
     job.sourceId,
     job.url,
+    job.sourceUrl ?? job.url,
     job.title,
     job.company,
     job.location,
@@ -361,4 +393,53 @@ export function expireStale(days: number): JobRow[] {
     for (const j of stale) upd.run(j.id);
   }
   return stale;
+}
+
+// --- digests (stored in the DB, not files) ---
+
+export interface DigestSummary {
+  day: string;
+  updatedAt: string;
+  preview: string;
+}
+
+export function saveDigest(day: string, markdown: string): void {
+  const now = nowIso();
+  db()
+    .prepare(
+      `INSERT INTO digests (day, markdown, created_at, updated_at)
+       VALUES (?,?,?,?)
+       ON CONFLICT(day) DO UPDATE SET markdown=excluded.markdown, updated_at=excluded.updated_at`,
+    )
+    .run(day, markdown, now, now);
+}
+
+export function listDigests(): DigestSummary[] {
+  const rows = db()
+    .prepare(
+      "SELECT day, updated_at, substr(markdown, 1, 400) AS preview FROM digests ORDER BY day DESC",
+    )
+    .all() as Row[];
+  return rows.map((r) => ({
+    day: r.day as string,
+    updatedAt: r.updated_at as string,
+    preview: (r.preview as string) ?? "",
+  }));
+}
+
+export function getDigest(day: string): {
+  day: string;
+  markdown: string;
+  updatedAt: string;
+} | null {
+  const r = db()
+    .prepare("SELECT day, markdown, updated_at FROM digests WHERE day=?")
+    .get(day) as Row | undefined;
+  return r
+    ? {
+        day: r.day as string,
+        markdown: r.markdown as string,
+        updatedAt: r.updated_at as string,
+      }
+    : null;
 }

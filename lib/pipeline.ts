@@ -148,8 +148,8 @@ function doExpire(log: (m: string) => void): void {
 }
 
 function doDigest(log: (m: string) => void): void {
-  buildDigest();
-  log("digest written");
+  const digest = buildDigest();
+  log(`digest saved for ${digest.day}`);
 }
 
 function doMonitor(log: (m: string) => void): void {

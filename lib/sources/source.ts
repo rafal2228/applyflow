@@ -38,6 +38,7 @@ export function mkJob(source: string, r: RawJob): NormalizedJob {
     source,
     sourceId: r.sourceId,
     url: r.url,
+    sourceUrl: r.url,
     title,
     company,
     location: r.location ?? null,

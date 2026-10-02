@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import Markdown from "./Markdown";
 import {
   Select,
   SelectContent,
@@ -133,6 +134,19 @@ export default function JobDrawer({
                   }
                 />
               )}
+              {job.sourceUrl && job.sourceUrl !== job.url && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  nativeButton={false}
+                  render={
+                    <a href={job.sourceUrl} target="_blank" rel="noreferrer">
+                      Loaded from
+                      <ExternalLink />
+                    </a>
+                  }
+                />
+              )}
             </div>
 
             <div className="grid gap-1.5">
@@ -241,18 +255,18 @@ export default function JobDrawer({
                     <div className="mb-1 text-xs font-medium text-muted-foreground">
                       CV ({lang.toUpperCase()})
                     </div>
-                    <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs whitespace-pre-wrap">
-                      {application.cv}
-                    </pre>
+                    <div className="max-h-72 overflow-auto rounded-lg border bg-muted/30 p-3">
+                      <Markdown>{application.cv}</Markdown>
+                    </div>
                   </div>
                   {application.coverLetter && (
                     <div>
                       <div className="mb-1 text-xs font-medium text-muted-foreground">
                         Cover letter
                       </div>
-                      <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs whitespace-pre-wrap">
-                        {application.coverLetter}
-                      </pre>
+                      <div className="max-h-72 overflow-auto rounded-lg border bg-muted/30 p-3">
+                        <Markdown>{application.coverLetter}</Markdown>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -302,9 +316,7 @@ export default function JobDrawer({
                 <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Description
                 </div>
-                <div className="text-sm whitespace-pre-wrap text-muted-foreground">
-                  {job.description}
-                </div>
+                <Markdown>{job.description}</Markdown>
               </div>
             )}
           </div>

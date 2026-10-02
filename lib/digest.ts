@@ -1,7 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { DIGEST_DIR } from "./paths";
-import { counts, dueFollowUps, listJobs, snapshotTrend } from "./db";
+import {
+  counts,
+  dueFollowUps,
+  getDigest as getDigestRow,
+  listDigests as listDigestRows,
+  listJobs,
+  saveDigest,
+  snapshotTrend,
+} from "./db";
 import { MONITOR_KEYWORDS, snapshotMarket } from "./market";
 import { todayStr } from "./util";
 import type { JobRow } from "./types";
@@ -41,8 +46,14 @@ function trendArrow(keyword: string, scope: string): string {
   return `${today} (${arrow})`;
 }
 
-/** Build today's digest from the local DB and write it to digest/. */
-export function buildDigest(): string {
+export interface DigestRecord {
+  day: string;
+  markdown: string;
+  updatedAt: string | null;
+}
+
+/** Build today's digest from the local DB and persist it (upsert by day). */
+export function buildDigest(): DigestRecord {
   const day = todayStr();
   snapshotMarket();
 
@@ -93,24 +104,42 @@ export function buildDigest(): string {
   }
   lines.push(``, `_Generated ${new Date().toISOString()}._`);
 
-  const md = lines.join("\n");
-  mkdirSync(DIGEST_DIR, { recursive: true });
-  writeFileSync(resolve(DIGEST_DIR, `${day}.md`), md);
-  writeFileSync(resolve(DIGEST_DIR, "latest.md"), md);
-  return md;
+  const markdown = lines.join("\n");
+  saveDigest(day, markdown);
+  return { day, markdown, updatedAt: new Date().toISOString() };
 }
 
-export interface DigestResult {
-  markdown: string;
-  path: string;
-  updatedAt: string | null;
+export interface DigestListItem {
+  day: string;
+  updatedAt: string;
+  preview: string;
 }
 
-/** Read the latest written digest, if any. */
-export function readDigest(): DigestResult | null {
-  const path = resolve(DIGEST_DIR, "latest.md");
-  if (!existsSync(path)) return null;
-  const markdown = readFileSync(path, "utf8");
-  const m = markdown.match(/_Generated ([^_]+)\._/);
-  return { markdown, path, updatedAt: m?.[1] ?? null };
+/** One-line preview from raw markdown, skipping the title. */
+function previewOf(raw: string): string {
+  const cleaned = raw
+    .split("\n")
+    .map((l) =>
+      l
+        .replace(/^#+\s*/, "")
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+        .replace(/[*_`>|#-]/g, "")
+        .trim(),
+    )
+    .filter(Boolean);
+  const body = cleaned.filter((l) => !/^job digest/i.test(l));
+  return (body[0] ?? cleaned[0] ?? "").slice(0, 160);
+}
+
+export function listDigests(): DigestListItem[] {
+  return listDigestRows().map((d) => ({
+    day: d.day,
+    updatedAt: d.updatedAt,
+    preview: previewOf(d.preview),
+  }));
+}
+
+export function getDigest(day: string): DigestRecord | null {
+  const r = getDigestRow(day);
+  return r ? { day: r.day, markdown: r.markdown, updatedAt: r.updatedAt } : null;
 }

@@ -17,6 +17,7 @@ export interface JobRow {
   source: string;
   sourceId: string;
   url: string;
+  sourceUrl: string | null;
   title: string;
   company: string;
   location: string | null;
@@ -49,6 +50,7 @@ export interface NormalizedJob {
   source: string;
   sourceId: string;
   url: string;
+  sourceUrl: string;
   title: string;
   company: string;
   location: string | null;
@@ -73,10 +75,26 @@ export interface RankResult {
   rankedAt: string;
 }
 
+/** An offer parsed from a posting URL (best-effort). */
+export interface ImportedOffer {
+  url: string;
+  title: string;
+  company: string;
+  location: string | null;
+  remote: boolean;
+  salaryText: string | null;
+  description: string;
+  tags: string[];
+  postedAt: string | null;
+  source: string;
+}
+
 export interface NewJobInput {
   title: string;
   company: string;
-  url?: string;
+  url: string;
+  /** The URL the offer was loaded/imported from (defaults to `url`). */
+  sourceUrl?: string;
   location?: string;
   remote?: boolean;
   salaryText?: string;

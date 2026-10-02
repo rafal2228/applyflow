@@ -12,9 +12,6 @@ export const DB_PATH = resolve(
   process.env.JOBS_DB_PATH?.trim() || "data/jobs.db",
 );
 
-/** Where daily digests are written. */
-export const DIGEST_DIR = resolve(process.cwd(), "digest");
-
 /** Where tailored CVs / cover letters are written. */
 export const APPLICATIONS_DIR = resolve(process.cwd(), "applications");
 

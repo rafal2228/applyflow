@@ -71,7 +71,7 @@ const MAINTENANCE: {
     action: "digest",
     title: "Write digest",
     description:
-      "Build today's shortlist and market summary into digest/latest.md.",
+      "Build today's shortlist and market summary, saved to your digest history.",
     icon: <FileText />,
   },
   {
