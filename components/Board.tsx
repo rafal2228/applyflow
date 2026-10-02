@@ -227,7 +227,7 @@ export default function Board({
                 if (id) moveJob(id, status);
               }}
               className={cn(
-                "flex w-72 shrink-0 flex-col rounded-xl bg-muted/50 p-2 ring-1 ring-foreground/5 transition",
+                "flex min-h-0 w-72 shrink-0 flex-col rounded-xl bg-muted/50 p-2 ring-1 ring-foreground/5 transition",
                 dragOver === status && "ring-2 ring-primary/60",
               )}
             >
@@ -242,7 +242,7 @@ export default function Board({
                   {items.length}
                 </Badge>
               </div>
-              <div className="flex min-h-10 flex-col gap-2 overflow-y-auto pr-0.5">
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
                 {items.length === 0 ? (
                   <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
                     Drop a job here
