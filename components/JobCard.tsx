@@ -39,7 +39,7 @@ export default function JobCard({
       }}
       onClick={() => onOpen(job.id)}
       className={cn(
-        "shrink-0 cursor-grab gap-2 px-3 py-3 transition hover:ring-foreground/20 hover:shadow-sm",
+        "shrink-0 cursor-grab gap-2 px-3 py-3 transition hover:border-foreground/25 hover:shadow-sm",
         dragging && "opacity-50",
       )}
     >
