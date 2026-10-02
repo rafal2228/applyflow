@@ -16,6 +16,12 @@ import {
   type JobRow,
   type JobStatus,
 } from "@/lib/types";
+import {
+  DEFAULT_FILTERS,
+  applyBoardFilters,
+  type BoardFiltersState,
+} from "@/lib/filters";
+import BoardFilters from "./BoardFilters";
 import JobCard from "./JobCard";
 import JobDrawer from "./JobDrawer";
 import NewOfferModal from "./NewOfferModal";
@@ -37,6 +43,7 @@ export default function Board({
 }) {
   const [jobs, setJobs] = useState<JobRow[]>(initialJobs);
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<BoardFiltersState>({ ...DEFAULT_FILTERS });
   const [showClosed, setShowClosed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -82,15 +89,10 @@ export default function Board({
     [jobs],
   );
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return jobs;
-    return jobs.filter((j) =>
-      `${j.title} ${j.company} ${j.location ?? ""} ${j.tags.join(" ")}`
-        .toLowerCase()
-        .includes(q),
-    );
-  }, [jobs, query]);
+  const visible = useMemo(
+    () => applyBoardFilters(jobs, filters, query),
+    [jobs, filters, query],
+  );
 
   const columns: JobStatus[] = showClosed
     ? [...OPEN_STATUSES, ...CLOSED_STATUSES]
@@ -197,6 +199,8 @@ export default function Board({
           />
           Closed
         </label>
+
+        <BoardFilters filters={filters} onChange={setFilters} jobs={jobs} />
 
         <div className="ml-auto flex items-center gap-2">
           {runningCount > 0 && (
