@@ -4,14 +4,14 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
-# local database + generated output (per-machine state)
-data/
-digest/
-applications/
+# local database + generated output (per-machine state) — repo root only
+/data/
+/digest/
+/applications/
 
 # personal profile data (keep the *.example.md templates committed)
-profile/CV.md
-profile/BRIEF.md
+/profile/CV.md
+/profile/BRIEF.md
 
 # local env — never commit secrets
 .env
