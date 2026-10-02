@@ -124,6 +124,7 @@ export default function JobDrawer({
                 <Button
                   size="xs"
                   variant="outline"
+                  nativeButton={false}
                   render={
                     <a href={job.url} target="_blank" rel="noreferrer">
                       Open posting
