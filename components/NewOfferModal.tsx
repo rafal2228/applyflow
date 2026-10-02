@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DownloadCloud, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,12 +22,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { NewJobInput } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { ImportedOffer, NewJobInput } from "@/lib/types";
 
 const EMPTY: NewJobInput = {
   title: "",
   company: "",
   url: "",
+  sourceUrl: "",
   location: "",
   remote: true,
   salaryText: "",
@@ -41,6 +44,8 @@ const START_OPTIONS = [
   { value: "applied", label: "Applied" },
 ];
 
+type Mode = "url" | "manual";
+
 export default function NewOfferModal({
   open,
   onOpenChange,
@@ -50,20 +55,72 @@ export default function NewOfferModal({
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
 }) {
+  const [mode, setMode] = useState<Mode>("url");
   const [form, setForm] = useState<NewJobInput>(EMPTY);
   const [tagsText, setTagsText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
 
   function set<K extends keyof NewJobInput>(key: K, value: NewJobInput[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function reset() {
+    setForm(EMPTY);
+    setTagsText("");
+    setError("");
+    setInfo("");
+    setMode("url");
+  }
+
+  async function fetchFromUrl() {
+    const url = form.url.trim();
+    if (!url) return;
+    setFetching(true);
+    setError("");
+    setInfo("");
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not import that URL.");
+      const o = data.offer as ImportedOffer;
+      setForm((f) => ({
+        ...f,
+        title: o.title || f.title,
+        company: o.company || f.company,
+        url: o.url || url,
+        sourceUrl: url,
+        location: o.location ?? f.location,
+        remote: o.remote,
+        salaryText: o.salaryText ?? f.salaryText,
+        description: o.description || f.description,
+        tags: o.tags?.length ? o.tags : f.tags,
+        status: "shortlisted",
+      }));
+      setTagsText((o.tags ?? []).join(", "));
+      setInfo(`Imported from ${o.source}. Review and edit below, then add.`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setFetching(false);
+    }
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     if (!form.title.trim() || !form.company.trim()) {
-      setError("Title and company are required.");
+      setError(
+        mode === "url"
+          ? "Fetch the details or fill in title and company."
+          : "Title and company are required.",
+      );
       return;
     }
     setSaving(true);
@@ -81,8 +138,7 @@ export default function NewOfferModal({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not save the offer.");
-      setForm(EMPTY);
-      setTagsText("");
+      reset();
       onCreated();
       onOpenChange(false);
     } catch (e) {
@@ -93,28 +149,100 @@ export default function NewOfferModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) reset();
+        onOpenChange(o);
+      }}
+    >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Track a new offer</DialogTitle>
+          <DialogTitle>Add an offer</DialogTitle>
           <DialogDescription>
-            Add a role you found off-pipeline, then grade it in one click.
+            Import it from a posting URL, or enter it manually. You can always
+            edit the details before saving.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={submit} className="grid gap-4">
+          <div className="inline-flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+            {(
+              [
+                ["url", "Import from URL"],
+                ["manual", "Manual"],
+              ] as [Mode, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition",
+                  mode === value
+                    ? "bg-background shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {error && (
             <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
             </p>
           )}
 
+          <div className="grid gap-1.5">
+            <Label htmlFor="no-url">Job posting URL</Label>
+            <div className="flex gap-2">
+              <Input
+                id="no-url"
+                value={form.url}
+                onChange={(e) => set("url", e.target.value)}
+                onKeyDown={(e) => {
+                  if (mode === "url" && e.key === "Enter") {
+                    e.preventDefault();
+                    void fetchFromUrl();
+                  }
+                }}
+                placeholder="https://…"
+              />
+              {mode === "url" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={fetching || !form.url.trim()}
+                  onClick={fetchFromUrl}
+                >
+                  {fetching ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <DownloadCloud />
+                  )}
+                  {fetching ? "Fetching…" : "Fetch"}
+                </Button>
+              )}
+            </div>
+            {info ? (
+              <p className="text-xs text-emerald-600">{info}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {mode === "url"
+                  ? "Paste a link and Fetch — we'll fill in the details for you to review."
+                  : "Enter the offer details yourself."}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="no-title">Job title *</Label>
               <Input
                 id="no-title"
-                autoFocus
                 value={form.title}
                 onChange={(e) => set("title", e.target.value)}
                 placeholder="Senior Frontend Engineer"
@@ -129,16 +257,6 @@ export default function NewOfferModal({
                 placeholder="Acme"
               />
             </div>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="no-url">Posting URL</Label>
-            <Input
-              id="no-url"
-              value={form.url}
-              onChange={(e) => set("url", e.target.value)}
-              placeholder="https://…"
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -176,10 +294,10 @@ export default function NewOfferModal({
             <Label htmlFor="no-desc">Description / notes</Label>
             <Textarea
               id="no-desc"
-              rows={4}
+              rows={5}
               value={form.description}
               onChange={(e) => set("description", e.target.value)}
-              placeholder="Paste the posting text so the grader has context…"
+              placeholder="Markdown welcome — the grader uses this as context."
             />
           </div>
 
@@ -196,9 +314,7 @@ export default function NewOfferModal({
               <Select
                 items={START_OPTIONS}
                 value={form.status}
-                onValueChange={(v) =>
-                  set("status", v as NewJobInput["status"])
-                }
+                onValueChange={(v) => set("status", v as NewJobInput["status"])}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />

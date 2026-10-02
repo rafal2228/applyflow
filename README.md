@@ -10,7 +10,7 @@ from **shadcn/ui on Base UI**, storage in a local **SQLite** file (built-in
 ```
 ┌──────────────────────────── ApplyFlow ─────────────────────────────┐
 │  Find: discover from 8 sources   Grade: A–F   Tailor: CV + letter  │
-│  Manage: Kanban drag-drop · notes · new offers · digest · market   │
+│  Manage: Kanban · notes · URL import · digests · market             │
 └───────────────────────────────┬────────────────────────────────────┘
                                 │ node:sqlite
                                 ▼
@@ -43,8 +43,14 @@ Everything lives inside this repo — no other project or service is required.
   (+ `Rejected · Skipped · Expired` behind the "Closed" toggle).
 - **Drag & drop** cards between columns; moving to **Applied** sets a +7-day
   follow-up.
-- **New offer** form, per-job notes, daily digest viewer, live market table
-  (Poland vs global remote).
+- **Add offers** by pasting a posting URL (parsed automatically from Greenhouse/
+  Lever APIs, schema.org JSON-LD or OpenGraph) or by entering them manually. The
+  **loaded-from URL is saved** so you can reopen the posting, and every field stays
+  editable before and after saving.
+- **Digests** are a first-class in-app view at `/digests` with history: generate
+  today's, browse past days, and read the shortlist + market summary rendered as
+  markdown.
+- Per-job notes and a live market table (Poland vs global remote).
 
 ## Setup
 
