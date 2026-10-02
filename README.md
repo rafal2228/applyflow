@@ -29,9 +29,11 @@ Everything lives inside this repo — no other project or service is required.
   **Market snapshot**, **Write digest**, with a live log console.
 
 **Grade**
-- **Grade new (n)** scores the whole new queue, or grade/re-grade per card,
-  against your CV + brief: A–F with a reason, pros & cons.
-- Grading promotes `new → shortlisted` automatically.
+- **Grade new (n)** schedules **every** ungraded offer and works through them in
+  the background — the header shows live progress (done/total, remaining, current
+  job) plus **Pause/Resume**. Per-card grading is still one click.
+- Grades are A–F with a reason, pros & cons, against your CV + brief; grading
+  promotes `new → shortlisted` automatically.
 
 **Tailor**
 - From any card: **Tailor** generates a job-specific CV + cover letter (EN/PL),

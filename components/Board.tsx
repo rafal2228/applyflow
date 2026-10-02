@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { FileText, Loader2, Plus, Settings2, Sparkles } from "lucide-react";
+import {
+  FileText,
+  Loader2,
+  Pause,
+  Play,
+  Plus,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +21,7 @@ import {
   BACKLOG_STATUSES,
   OPEN_STATUSES,
   STATUS_LABELS,
+  type GradeRunState,
   type JobRow,
   type JobStatus,
 } from "@/lib/types";
@@ -47,7 +56,7 @@ export default function Board({
   const [showNew, setShowNew] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [gradingIds, setGradingIds] = useState<Set<string>>(new Set());
-  const [gradingAll, setGradingAll] = useState(false);
+  const [gradeRun, setGradeRun] = useState<GradeRunState | null>(null);
   const [dragOver, setDragOver] = useState<JobStatus | null>(null);
   const [runningCount, setRunningCount] = useState(0);
 
@@ -77,6 +86,37 @@ export default function Board({
       clearInterval(id);
     };
   }, []);
+
+  // Track the background grading run and refresh when it finishes.
+  useEffect(() => {
+    let alive = true;
+    let wasRunning = false;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/grade", { cache: "no-store" });
+        if (!res.ok || !alive) return;
+        const data = (await res.json()) as { run?: GradeRunState | null };
+        const run = data.run ?? null;
+        setGradeRun(run);
+        const running = !!run?.running;
+        if (wasRunning && !running) {
+          void refresh();
+          if (run && run.failed > 0)
+            toast.error(`Grading finished with ${run.failed} error(s)`);
+          else if (run) toast.success(`Graded ${run.done} offer(s)`);
+        }
+        wasRunning = running;
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 1500);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [refresh]);
 
   const ungraded = useMemo(
     () =>
@@ -148,26 +188,19 @@ export default function Board({
     }
   }
 
-  async function gradeAll() {
-    setGradingAll(true);
-    const t = toast.loading(`Grading ${ungraded} new offer(s)…`);
+  async function gradeAction(action: "start" | "pause" | "resume") {
     try {
       const res = await fetch("/api/grade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ all: true, limit: 25 }),
+        body: JSON.stringify({ action }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Grading failed");
-      await refresh();
-      toast.success(
-        `Graded ${data.graded.length}${data.errors.length ? `, ${data.errors.length} failed` : ""}`,
-        { id: t },
-      );
+      setGradeRun(data.run as GradeRunState);
+      if (action === "start") toast.message("Grading scheduled");
     } catch (e) {
-      toast.error((e as Error).message, { id: t });
-    } finally {
-      setGradingAll(false);
+      toast.error((e as Error).message);
     }
   }
 
@@ -212,15 +245,56 @@ export default function Board({
             <FileText />
             Digests
           </Button>
-          <Button
-            variant="outline"
-            onClick={gradeAll}
-            disabled={!grader.configured || gradingAll || ungraded === 0}
-            title={grader.configured ? undefined : "Configure OPENAI_* to grade"}
-          >
-            <Sparkles />
-            Grade new{ungraded ? ` (${ungraded})` : ""}
-          </Button>
+          {gradeRun && gradeRun.running ? (
+            <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-2.5 py-1.5">
+              {gradeRun.paused ? (
+                <Pause className="size-4 text-muted-foreground" />
+              ) : (
+                <Loader2 className="size-4 animate-spin text-primary" />
+              )}
+              <div className="min-w-0">
+                <div className="text-xs font-medium tabular-nums">
+                  {gradeRun.paused ? "Grading paused" : "Grading"}{" "}
+                  {gradeRun.done}/{gradeRun.total}
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {gradeRun.remaining} left
+                    {gradeRun.failed ? ` · ${gradeRun.failed} failed` : ""}
+                  </span>
+                </div>
+                <div className="mt-1 h-1 w-40 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${
+                        gradeRun.total
+                          ? Math.round((gradeRun.done / gradeRun.total) * 100)
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => gradeAction(gradeRun.paused ? "resume" : "pause")}
+              >
+                {gradeRun.paused ? <Play /> : <Pause />}
+                {gradeRun.paused ? "Resume" : "Pause"}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => gradeAction("start")}
+              disabled={!grader.configured || ungraded === 0}
+              title={grader.configured ? undefined : "Configure OPENAI_* to grade"}
+            >
+              <Sparkles />
+              Grade new{ungraded ? ` (${ungraded})` : ""}
+            </Button>
+          )}
           <Button onClick={() => setShowNew(true)}>
             <Plus />
             New offer

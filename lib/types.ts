@@ -75,6 +75,22 @@ export interface RankResult {
   rankedAt: string;
 }
 
+/** Progress of a background grading run. */
+export interface GradeRunState {
+  total: number;
+  done: number;
+  failed: number;
+  remaining: number;
+  running: boolean;
+  paused: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  currentTitle: string | null;
+  currentCompany: string | null;
+  lastGrade: string | null;
+  errors: { id: string; error: string }[];
+}
+
 /** An offer parsed from a posting URL (best-effort). */
 export interface ImportedOffer {
   url: string;
