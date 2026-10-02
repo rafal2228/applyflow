@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Settings2, Sparkles } from "lucide-react";
+import { FileText, Loader2, Plus, Settings2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,10 +45,33 @@ export default function Board({
   const [gradingIds, setGradingIds] = useState<Set<string>>(new Set());
   const [gradingAll, setGradingAll] = useState(false);
   const [dragOver, setDragOver] = useState<JobStatus | null>(null);
+  const [runningCount, setRunningCount] = useState(0);
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/jobs", { cache: "no-store" });
     if (res.ok) setJobs((await res.json()).jobs as JobRow[]);
+  }, []);
+
+  // Surface background jobs in the header while they run.
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/pipeline", { cache: "no-store" });
+        if (res.ok && alive) {
+          const data = (await res.json()) as { runs: { running: boolean }[] };
+          setRunningCount(data.runs.filter((r) => r.running).length);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 4000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
 
   const ungraded = useMemo(
@@ -176,6 +199,12 @@ export default function Board({
         </label>
 
         <div className="ml-auto flex items-center gap-2">
+          {runningCount > 0 && (
+            <Button variant="outline" onClick={() => setShowTools(true)}>
+              <Loader2 className="animate-spin" />
+              {runningCount} running
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setShowTools(true)}>
             <Settings2 />
             Tools

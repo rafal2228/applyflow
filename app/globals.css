@@ -130,3 +130,16 @@
 [data-column] {
   background: color-mix(in oklch, var(--muted) 70%, var(--background));
 }
+
+/* Indeterminate progress bar for running background jobs */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.progress-indeterminate {
+  animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
