@@ -7,11 +7,10 @@ import { FileText, Loader2, Plus, Settings2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { statusDotClass } from "@/lib/ui";
 import {
-  CLOSED_STATUSES,
+  BACKLOG_STATUSES,
   OPEN_STATUSES,
   STATUS_LABELS,
   type JobRow,
@@ -44,7 +43,6 @@ export default function Board({
   const [jobs, setJobs] = useState<JobRow[]>(initialJobs);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<BoardFiltersState>({ ...DEFAULT_FILTERS });
-  const [showClosed, setShowClosed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showTools, setShowTools] = useState(false);
@@ -93,9 +91,11 @@ export default function Board({
     [jobs, filters, query],
   );
 
-  const columns: JobStatus[] = showClosed
-    ? [...OPEN_STATUSES, ...CLOSED_STATUSES]
-    : OPEN_STATUSES;
+  const columns: JobStatus[] = OPEN_STATUSES;
+  const backlogItems = useMemo(
+    () => visible.filter((j) => BACKLOG_STATUSES.includes(j.status)),
+    [visible],
+  );
 
   async function moveJob(id: string, next: JobStatus) {
     const prev = jobs;
@@ -190,14 +190,6 @@ export default function Board({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Checkbox
-            checked={showClosed}
-            onCheckedChange={(c) => setShowClosed(c === true)}
-          />
-          Closed
-        </label>
 
         <BoardFilters filters={filters} onChange={setFilters} jobs={jobs} />
 
@@ -299,6 +291,56 @@ export default function Board({
             </section>
           );
         })}
+
+        <section
+          data-status="backlog"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            setDragOver("skipped");
+          }}
+          onDragLeave={() => setDragOver((s) => (s === "skipped" ? null : s))}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(null);
+            const id = e.dataTransfer.getData("text/job-id");
+            if (id) moveJob(id, "skipped");
+          }}
+          className={cn(
+            "flex min-h-0 w-72 shrink-0 flex-col rounded-xl bg-muted/40 p-2 ring-1 ring-foreground/5 transition",
+            dragOver === "skipped" && "ring-2 ring-primary/60",
+          )}
+        >
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <span className="size-2 rounded-full bg-neutral-400" />
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Backlog
+            </h2>
+            <Badge variant="secondary" className="ml-auto">
+              {backlogItems.length}
+            </Badge>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
+            {backlogItems.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                Rejected, skipped &amp; expired offers land here
+              </div>
+            ) : (
+              backlogItems.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  backlog
+                  onOpen={setSelectedId}
+                  onDragStateChange={() => setDragOver(null)}
+                  onGrade={gradeOne}
+                  onRestore={(id) => moveJob(id, "shortlisted")}
+                  grading={gradingIds.has(job.id)}
+                />
+              ))
+            )}
+          </div>
+        </section>
       </main>
 
       {selected && (

@@ -134,8 +134,15 @@ export const OPEN_STATUSES: JobStatus[] = [
   "offer",
 ];
 
-export const CLOSED_STATUSES: JobStatus[] = [
+/** Statuses that live in the shared Backlog rather than a main column. */
+export const BACKLOG_STATUSES: JobStatus[] = [
   "rejected",
   "skipped",
   "expired",
 ];
+
+export const BACKLOG_STATUS_LABELS: Record<string, string> = {
+  rejected: "Rejected",
+  skipped: "Skipped",
+  expired: "Expired",
+};

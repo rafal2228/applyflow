@@ -39,8 +39,10 @@ Everything lives inside this repo — no other project or service is required.
   under `applications/<slug>/` and viewable in the drawer.
 
 **Manage**
-- **Kanban pipeline** — `Inbox · Shortlisted · Applied · Interview · Offer`
-  (+ `Rejected · Skipped · Expired` behind the "Closed" toggle).
+- **Kanban pipeline** — `Inbox · Shortlisted · Applied · Interview · Offer`, plus
+  an always-visible **Backlog** column that collects `Rejected · Skipped ·
+  Expired` offers. Drag a card into the Backlog (or set the status in the drawer),
+  then **Restore** it later and it returns to `Shortlisted`.
 - **Drag & drop** cards between columns; moving to **Applied** sets a +7-day
   follow-up.
 - **Add offers** by pasting a posting URL (parsed automatically from Greenhouse/

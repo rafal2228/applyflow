@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { gradeClass } from "@/lib/ui";
-import type { JobRow } from "@/lib/types";
+import { STATUS_LABELS, type JobRow } from "@/lib/types";
 
 export default function JobCard({
   job,
@@ -15,12 +15,16 @@ export default function JobCard({
   onDragStateChange,
   onGrade,
   grading,
+  backlog = false,
+  onRestore,
 }: {
   job: JobRow;
   onOpen: (id: string) => void;
   onDragStateChange: (dragging: boolean) => void;
   onGrade: (id: string) => void;
   grading: boolean;
+  backlog?: boolean;
+  onRestore?: (id: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
 
@@ -92,6 +96,7 @@ export default function JobCard({
           </Badge>
         )}
         {job.tailored && <Badge variant="secondary">Tailored</Badge>}
+        {backlog && <Badge variant="outline">{STATUS_LABELS[job.status]}</Badge>}
       </div>
 
       {job.rankReason && (
@@ -100,18 +105,35 @@ export default function JobCard({
         </p>
       )}
 
-      {!job.grade && (
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={grading}
-          onClick={(e) => {
-            e.stopPropagation();
-            onGrade(job.id);
-          }}
-        >
-          {grading ? "Grading…" : "Grade"}
-        </Button>
+      {(!job.grade || backlog) && (
+        <div className="flex flex-wrap gap-1.5">
+          {backlog && onRestore && (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRestore(job.id);
+              }}
+            >
+              <RotateCcw />
+              Restore
+            </Button>
+          )}
+          {!job.grade && (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={grading}
+              onClick={(e) => {
+                e.stopPropagation();
+                onGrade(job.id);
+              }}
+            >
+              {grading ? "Grading…" : "Grade"}
+            </Button>
+          )}
+        </div>
       )}
     </Card>
   );
