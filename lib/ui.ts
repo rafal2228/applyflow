@@ -42,22 +42,36 @@ export function statusDotClass(status: JobStatus): string {
   }
 }
 
+/**
+ * Dates are rendered during SSR and then hydrated on the client. An `undefined`
+ * locale resolves differently in Node (usually en-US) and in the browser (the
+ * user's locale), which produces mismatched HTML. Pin one locale so both sides
+ * format identically.
+ */
+const DATE_LOCALE = "en-GB";
+
+const shortDateFmt = new Intl.DateTimeFormat(DATE_LOCALE, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
+const dateTimeFmt = new Intl.DateTimeFormat(DATE_LOCALE, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 export function shortDate(s: string | null): string {
   if (!s) return "—";
-  return new Date(s).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? "—" : shortDateFmt.format(d);
 }
 
 export function dateTime(s: string | null): string {
   if (!s) return "—";
-  return new Date(s).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? "—" : dateTimeFmt.format(d);
 }
