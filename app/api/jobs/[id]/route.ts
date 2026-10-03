@@ -1,4 +1,4 @@
-import { getJob, setStatus, updateNotes } from "@/lib/db";
+import { getJob, setStatus, updateCoverLetter, updateNotes } from "@/lib/db";
 import { STATUSES, type JobStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ export async function PATCH(
   const { id } = await params;
   if (!getJob(id)) return Response.json({ error: "Not found" }, { status: 404 });
 
-  let body: { status?: string; notes?: string };
+  let body: { status?: string; notes?: string; coverLetter?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -38,6 +38,7 @@ export async function PATCH(
     setStatus(id, body.status as JobStatus);
   }
   if (body.notes !== undefined) updateNotes(id, body.notes);
+  if (body.coverLetter !== undefined) updateCoverLetter(id, body.coverLetter);
 
   return Response.json({ job: getJob(id) });
 }

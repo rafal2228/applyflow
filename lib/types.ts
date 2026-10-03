@@ -42,6 +42,7 @@ export interface JobRow {
   lastSeenAt: string | null;
   tailored: boolean;
   notes: string | null;
+  coverLetter: string | null;
 }
 
 /** A posting after normalisation into one schema (used by discovery). */

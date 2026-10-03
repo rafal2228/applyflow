@@ -1,6 +1,6 @@
 import { getJob } from "@/lib/db";
 import { llmInfo } from "@/lib/llm";
-import { readApplication, tailorJob } from "@/lib/tailor";
+import { readApplication, tailorJob, writeCoverLetter } from "@/lib/tailor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       { status: 503 },
     );
   }
-  let body: { id?: string; lang?: string } = {};
+  let body: { id?: string; lang?: string; mode?: string } = {};
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -30,6 +30,10 @@ export async function POST(req: Request) {
   }
   if (!body.id) return Response.json({ error: "Missing id" }, { status: 400 });
   try {
+    if (body.mode === "cover-letter") {
+      const coverLetter = await writeCoverLetter(body.id, body.lang ?? "en");
+      return Response.json({ coverLetter });
+    }
     const application = await tailorJob(body.id, body.lang ?? "en");
     return Response.json({ application });
   } catch (e) {

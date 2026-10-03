@@ -163,6 +163,16 @@ export default function Board({
     if (!res.ok) toast.error("Could not save notes");
   }
 
+  async function saveCoverLetter(id: string, coverLetter: string) {
+    setJobs((js) => js.map((j) => (j.id === id ? { ...j, coverLetter } : j)));
+    const res = await fetch(`/api/jobs/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coverLetter }),
+    });
+    if (!res.ok) toast.error("Could not save cover letter");
+  }
+
   async function gradeOne(id: string) {
     setGradingIds((s) => new Set(s).add(id));
     const t = toast.loading("Grading…");
@@ -424,6 +434,7 @@ export default function Board({
           onClose={() => setSelectedId(null)}
           onMove={moveJob}
           onSaveNotes={saveNotes}
+          onSaveCoverLetter={saveCoverLetter}
           onGrade={gradeOne}
           grading={gradingIds.has(selected.id)}
           graderReady={grader.configured}

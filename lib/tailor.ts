@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { APPLICATIONS_DIR } from "./paths";
-import { getJob, markTailored } from "./db";
+import { getJob, markTailored, updateCoverLetter } from "./db";
 import { candidateContext } from "./candidate";
 import { chatJson } from "./llm";
 import { truncate } from "./util";
@@ -63,6 +63,33 @@ Return ONLY this JSON:
 }`;
 }
 
+function buildCoverLetterPrompt(job: JobRow, lang: string): string {
+  const langLabel = lang === "pl" ? "Polish" : "English";
+  return `Write a dedicated cover letter for ONE specific job.
+
+STRICT RULES:
+- Use ONLY facts present in the candidate data below. DO NOT invent employers, titles, dates, metrics, or skills.
+- Address this exact company/role; reference concrete requirements from the description.
+- Sound human and specific, never generic. No placeholders like "[Company]".
+- 150-220 words, 3-4 short paragraphs. Plain prose (Markdown is fine, no headings).
+- Write in ${langLabel}.
+
+CANDIDATE DATA (source of truth):
+${candidateContext()}
+
+TARGET JOB:
+Title: ${job.title}
+Company: ${job.company}
+Location: ${job.location ?? "?"} (remote=${job.remote})
+Description:
+${truncate(job.description.replace(/\s+/g, " "), 4000)}
+
+Return ONLY this JSON:
+{
+  "coverLetter": "the full cover letter text, ${langLabel}"
+}`;
+}
+
 function renderCvMarkdown(job: JobRow, cv: TailoredCv): string {
   const exp = cv.experience
     .map(
@@ -114,8 +141,32 @@ export async function tailorJob(id: string, lang = "en"): Promise<ApplicationFil
     `# ${job.title} @ ${job.company}\n\n${job.url}\n\nLocation: ${job.location ?? "?"} (remote=${job.remote})\nGrade: ${job.grade ?? "?"} (${job.score ?? "?"}) — ${job.rankReason ?? ""}\n\n---\n\n${job.description}\n`,
   );
 
+  if (cv.coverLetter) updateCoverLetter(job.id, cv.coverLetter.trim());
   markTailored(job.id);
   return readApplicationFiles(dir, lang);
+}
+
+/**
+ * Write a dedicated cover letter for one job and persist it onto the offer.
+ * The text is stored on the job row so the drawer can edit/copy it directly.
+ */
+export async function writeCoverLetter(id: string, lang = "en"): Promise<string> {
+  const job = getJob(id);
+  if (!job) throw new Error(`No job with id ${id}`);
+
+  const { data } = await chatJson<{ coverLetter: string }>(
+    buildCoverLetterPrompt(job, lang),
+    {
+      timeoutMs: 240_000,
+      system: "You write tailored cover letters. Reply with JSON only.",
+    },
+  );
+
+  const coverLetter = (data.coverLetter ?? "").trim();
+  if (!coverLetter) throw new Error("The model returned an empty cover letter.");
+
+  updateCoverLetter(id, coverLetter);
+  return coverLetter;
 }
 
 /** Read already-generated artifacts for a job (if the pipeline/UI made them). */

@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   follow_up_at TEXT,
   last_seen_at TEXT,
   tailored INTEGER NOT NULL DEFAULT 0,
-  notes TEXT
+  notes TEXT,
+  cover_letter TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
@@ -79,7 +80,7 @@ const g = globalThis as unknown as {
 };
 
 /** Bump whenever SCHEMA or migrations change so cached connections re-migrate. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /**
  * Idempotent schema + migrations. Safe to run on every open: SCHEMA uses
@@ -95,6 +96,9 @@ function migrate(d: DatabaseSync): void {
   if (!cols.includes("source_url")) {
     d.exec("ALTER TABLE jobs ADD COLUMN source_url TEXT");
     d.exec("UPDATE jobs SET source_url = url WHERE source_url IS NULL");
+  }
+  if (!cols.includes("cover_letter")) {
+    d.exec("ALTER TABLE jobs ADD COLUMN cover_letter TEXT");
   }
 }
 
@@ -148,6 +152,7 @@ function rowToJob(r: Row): JobRow {
     lastSeenAt: (r.last_seen_at as string) ?? null,
     tailored: !!r.tailored,
     notes: (r.notes as string) ?? null,
+    coverLetter: (r.cover_letter as string) ?? null,
   };
 }
 
@@ -197,6 +202,13 @@ export function setStatus(id: string, status: JobStatus): JobRow | null {
 
 export function updateNotes(id: string, notes: string): JobRow | null {
   db().prepare("UPDATE jobs SET notes=? WHERE id=?").run(notes, id);
+  return getJob(id);
+}
+
+export function updateCoverLetter(id: string, coverLetter: string): JobRow | null {
+  db()
+    .prepare("UPDATE jobs SET cover_letter=? WHERE id=?")
+    .run(coverLetter, id);
   return getJob(id);
 }
 

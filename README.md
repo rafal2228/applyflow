@@ -39,6 +39,10 @@ Everything lives inside this repo — no other project or service is required.
 - From any card: **Tailor** generates a job-specific CV + cover letter (EN/PL),
   grounded only in your `profile/CV.md` + `profile/BRIEF.md`. Artifacts are saved
   under `applications/<slug>/` and viewable in the drawer.
+- **Dedicated cover letter** — write a focused cover letter on demand, edit it by
+  hand, and copy it in one click. It's **persisted on the offer** (not a file),
+  autosaves as you type, and can be regenerated anytime. See
+  [`docs/cover-letter.md`](docs/cover-letter.md).
 
 **Manage**
 - **Kanban pipeline** — `Inbox · Shortlisted · Applied · Interview · Offer`, plus

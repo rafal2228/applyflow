@@ -96,6 +96,7 @@ export default function JobCard({
           </Badge>
         )}
         {job.tailored && <Badge variant="secondary">Tailored</Badge>}
+        {job.coverLetter && <Badge variant="secondary">Cover letter</Badge>}
         {job.appliedAt && (
           <Badge variant="outline" title={`Applied ${dateTime(job.appliedAt)}`}>
             Applied {shortDate(job.appliedAt)}

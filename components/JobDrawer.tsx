@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Check, ExternalLink, FileText, Loader2, Sparkles } from "lucide-react";
+import {
+  Check,
+  Copy,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -14,6 +21,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Markdown from "./Markdown";
 import {
   Select,
@@ -42,6 +50,7 @@ export default function JobDrawer({
   onClose,
   onMove,
   onSaveNotes,
+  onSaveCoverLetter,
   onGrade,
   grading,
   graderReady,
@@ -50,6 +59,7 @@ export default function JobDrawer({
   onClose: () => void;
   onMove: (id: string, status: JobStatus) => void;
   onSaveNotes: (id: string, notes: string) => void;
+  onSaveCoverLetter: (id: string, coverLetter: string) => void;
   onGrade: (id: string) => void;
   grading: boolean;
   graderReady: boolean;
@@ -88,6 +98,44 @@ export default function JobDrawer({
     };
   }, [job.id]);
 
+  const [coverLetter, setCoverLetter] = useState(job.coverLetter ?? "");
+  const [coverSave, setCoverSave] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
+  const [coverTab, setCoverTab] = useState<"preview" | "edit">("preview");
+  const [writing, setWriting] = useState(false);
+  const coverDirty = useRef(false);
+  const coverRef = useRef(coverLetter);
+  coverRef.current = coverLetter;
+  const onSaveCoverLetterRef = useRef(onSaveCoverLetter);
+  useEffect(() => {
+    onSaveCoverLetterRef.current = onSaveCoverLetter;
+  });
+
+  // Autosave the cover letter a moment after typing stops.
+  useEffect(() => {
+    if (!coverDirty.current) return;
+    setCoverSave("saving");
+    const t = setTimeout(() => {
+      void Promise.resolve(
+        onSaveCoverLetterRef.current(job.id, coverRef.current),
+      ).then(() => {
+        coverDirty.current = false;
+        setCoverSave("saved");
+      });
+    }, 700);
+    return () => clearTimeout(t);
+  }, [coverLetter, job.id]);
+
+  // Flush a pending edit when the drawer closes.
+  useEffect(() => {
+    return () => {
+      if (coverDirty.current) {
+        void onSaveCoverLetterRef.current(job.id, coverRef.current);
+      }
+    };
+  }, [job.id]);
+
   const [application, setApplication] = useState<ApplicationFiles | null>(null);
   const [tailoring, setTailoring] = useState(false);
   const [lang, setLang] = useState("en");
@@ -115,11 +163,50 @@ export default function JobDrawer({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Tailoring failed");
       setApplication(data.application);
+      const letter = (data.application?.coverLetter ?? "").trim();
+      if (letter) {
+        setCoverLetter(letter);
+        onSaveCoverLetterRef.current(job.id, letter);
+      }
       toast.success("Tailored CV + cover letter ready", { id: t });
     } catch (e) {
       toast.error((e as Error).message, { id: t });
     } finally {
       setTailoring(false);
+    }
+  }
+
+  async function writeLetter() {
+    setWriting(true);
+    const t = toast.loading("Writing cover letter…");
+    try {
+      const res = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: job.id, lang, mode: "cover-letter" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not write cover letter");
+      const letter = (data.coverLetter ?? "").trim();
+      coverDirty.current = false;
+      setCoverLetter(letter);
+      setCoverSave("saved");
+      setCoverTab("preview");
+      onSaveCoverLetterRef.current(job.id, letter);
+      toast.success("Cover letter ready", { id: t });
+    } catch (e) {
+      toast.error((e as Error).message, { id: t });
+    } finally {
+      setWriting(false);
+    }
+  }
+
+  async function copyLetter() {
+    try {
+      await navigator.clipboard.writeText(coverLetter);
+      toast.success("Cover letter copied");
+    } catch {
+      toast.error("Could not copy to clipboard");
     }
   }
 
@@ -292,20 +379,93 @@ export default function JobDrawer({
                       <Markdown>{application.cv}</Markdown>
                     </div>
                   </div>
-                  {application.coverLetter && (
-                    <div>
-                      <div className="mb-1 text-xs font-medium text-muted-foreground">
-                        Cover letter
-                      </div>
-                      <div className="max-h-72 overflow-auto rounded-lg border bg-muted/30 p-3">
-                        <Markdown>{application.coverLetter}</Markdown>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   No tailored CV yet — generate one from your profile + CV.
+                </p>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Cover letter
+                </span>
+                <div className="flex items-center gap-1">
+                  {coverLetter && (
+                    <Button size="xs" variant="ghost" onClick={copyLetter}>
+                      <Copy />
+                      Copy
+                    </Button>
+                  )}
+                  <Button
+                    size="xs"
+                    variant={coverLetter ? "outline" : "default"}
+                    disabled={writing || !graderReady}
+                    title={
+                      graderReady ? undefined : "Configure OPENAI_* to write"
+                    }
+                    onClick={writeLetter}
+                  >
+                    <Sparkles />
+                    {writing
+                      ? "Writing…"
+                      : coverLetter
+                        ? "Rewrite"
+                        : "Write cover letter"}
+                  </Button>
+                </div>
+              </div>
+
+              {coverLetter ? (
+                <Tabs
+                  value={coverTab}
+                  onValueChange={(v) => setCoverTab(v as "preview" | "edit")}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <TabsList>
+                      <TabsTrigger value="preview">Preview</TabsTrigger>
+                      <TabsTrigger value="edit">Edit</TabsTrigger>
+                    </TabsList>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      {coverSave === "saving" ? (
+                        <>
+                          <Loader2 className="size-3 animate-spin" /> Saving…
+                        </>
+                      ) : coverSave === "saved" ? (
+                        <>
+                          <Check className="size-3 text-emerald-600" /> Saved
+                        </>
+                      ) : (
+                        "Autosaves as you type"
+                      )}
+                    </span>
+                  </div>
+                  <TabsContent value="preview" className="pt-1">
+                    <div className="max-h-80 overflow-auto rounded-lg border bg-muted/30 p-3">
+                      <Markdown>{coverLetter}</Markdown>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="edit" className="pt-1">
+                    <Textarea
+                      rows={12}
+                      value={coverLetter}
+                      onChange={(e) => {
+                        coverDirty.current = true;
+                        setCoverLetter(e.target.value);
+                      }}
+                      placeholder="Write your cover letter…"
+                    />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {graderReady
+                    ? "No cover letter yet — write one tuned to this offer."
+                    : "Configure OPENAI_* in .env.local to write a cover letter."}
                 </p>
               )}
             </div>
