@@ -99,6 +99,18 @@ personal data stays local.
 The LLM client only assumes a standard `POST {base}/chat/completions` API — it is
 **not tied to any specific vendor or backend**.
 
+## Development
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `docs:`, `refactor:`, `chore:` …). A **commitlint** `commit-msg`
+hook (via Husky) validates every message; the hook is installed automatically by
+`npm install` through the `prepare` script.
+
+```bash
+npm run typecheck            # tsc --noEmit
+echo "feat: x" | npm run lint:commit   # validate a message manually
+```
+
 ## Tuning discovery
 
 Edit `lib/config.ts` to change target titles, stack keywords, exclusions, Adzuna
