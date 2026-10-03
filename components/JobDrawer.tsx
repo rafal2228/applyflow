@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { gradeClass, shortDate } from "@/lib/ui";
+import { dateTime, gradeClass, shortDate } from "@/lib/ui";
 import {
   STATUSES,
   STATUS_LABELS,
@@ -346,7 +346,7 @@ export default function JobDrawer({
 
             <p className="text-xs text-muted-foreground">
               Discovered {shortDate(job.discoveredAt)}
-              {job.appliedAt ? ` · Applied ${shortDate(job.appliedAt)}` : ""}
+              {job.appliedAt ? ` · Applied ${dateTime(job.appliedAt)}` : ""}
               {job.followUpAt ? ` · Follow up ${shortDate(job.followUpAt)}` : ""}
               {job.rankedAt ? ` · Graded ${shortDate(job.rankedAt)}` : ""}
             </p>

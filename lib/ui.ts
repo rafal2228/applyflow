@@ -50,3 +50,14 @@ export function shortDate(s: string | null): string {
     day: "numeric",
   });
 }
+
+export function dateTime(s: string | null): string {
+  if (!s) return "—";
+  return new Date(s).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}

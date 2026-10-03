@@ -278,6 +278,8 @@ export function createJob(input: NewJobInput): CreateResult {
     status,
     now,
   );
+  // Stamp first-applied time (+follow-up) when created straight into Applied.
+  if (status === "applied") setStatus(id, "applied");
   return { ok: true, job: getJob(id)! };
 }
 

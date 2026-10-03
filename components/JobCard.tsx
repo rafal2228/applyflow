@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { gradeClass } from "@/lib/ui";
+import { dateTime, gradeClass, shortDate } from "@/lib/ui";
 import { STATUS_LABELS, type JobRow } from "@/lib/types";
 
 export default function JobCard({
@@ -96,6 +96,11 @@ export default function JobCard({
           </Badge>
         )}
         {job.tailored && <Badge variant="secondary">Tailored</Badge>}
+        {job.appliedAt && (
+          <Badge variant="outline" title={`Applied ${dateTime(job.appliedAt)}`}>
+            Applied {shortDate(job.appliedAt)}
+          </Badge>
+        )}
         {backlog && <Badge variant="outline">{STATUS_LABELS[job.status]}</Badge>}
       </div>
 
