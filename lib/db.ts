@@ -73,10 +73,22 @@ CREATE TABLE IF NOT EXISTS digests (
 
 type Row = Record<string, unknown>;
 
-const g = globalThis as unknown as { __applyflowDb?: DatabaseSync };
+const g = globalThis as unknown as {
+  __applyflowDb?: DatabaseSync;
+  __applyflowSchemaVersion?: number;
+};
 
-/** Idempotent column adds for DBs created before a column existed. */
+/** Bump whenever SCHEMA or migrations change so cached connections re-migrate. */
+const SCHEMA_VERSION = 2;
+
+/**
+ * Idempotent schema + migrations. Safe to run on every open: SCHEMA uses
+ * CREATE TABLE/INDEX IF NOT EXISTS, and column adds are checked first. Running
+ * this on cached connections is what heals a DB opened before a schema change
+ * (e.g. across a Next.js hot-reload, where the connection survives).
+ */
 function migrate(d: DatabaseSync): void {
+  d.exec(SCHEMA);
   const cols = (d.prepare("PRAGMA table_info(jobs)").all() as Row[]).map(
     (r) => r.name as string,
   );
@@ -87,13 +99,20 @@ function migrate(d: DatabaseSync): void {
 }
 
 function db(): DatabaseSync {
-  if (g.__applyflowDb) return g.__applyflowDb;
+  const cached = g.__applyflowDb;
+  if (cached) {
+    if (g.__applyflowSchemaVersion !== SCHEMA_VERSION) {
+      migrate(cached);
+      g.__applyflowSchemaVersion = SCHEMA_VERSION;
+    }
+    return cached;
+  }
   const fresh = !existsSync(DB_PATH);
   const d = new DatabaseSync(DB_PATH);
   d.exec("PRAGMA journal_mode = WAL;");
-  d.exec(SCHEMA);
   migrate(d);
   g.__applyflowDb = d;
+  g.__applyflowSchemaVersion = SCHEMA_VERSION;
   if (fresh) console.warn(`[applyflow] created new jobs.db at ${DB_PATH}`);
   return d;
 }
