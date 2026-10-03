@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, FileText, Sparkles } from "lucide-react";
+import { Check, ExternalLink, FileText, Loader2, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -55,6 +55,39 @@ export default function JobDrawer({
   graderReady: boolean;
 }) {
   const [notes, setNotes] = useState(job.notes ?? "");
+  const [noteSave, setNoteSave] = useState<"idle" | "saving" | "saved">("idle");
+  const notesDirty = useRef(false);
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const onSaveNotesRef = useRef(onSaveNotes);
+  useEffect(() => {
+    onSaveNotesRef.current = onSaveNotes;
+  });
+
+  // Autosave notes a moment after typing stops.
+  useEffect(() => {
+    if (!notesDirty.current) return;
+    setNoteSave("saving");
+    const t = setTimeout(() => {
+      void Promise.resolve(
+        onSaveNotesRef.current(job.id, notesRef.current),
+      ).then(() => {
+        notesDirty.current = false;
+        setNoteSave("saved");
+      });
+    }, 700);
+    return () => clearTimeout(t);
+  }, [notes, job.id]);
+
+  // Flush a pending edit when the drawer closes.
+  useEffect(() => {
+    return () => {
+      if (notesDirty.current) {
+        void onSaveNotesRef.current(job.id, notesRef.current);
+      }
+    };
+  }, [job.id]);
+
   const [application, setApplication] = useState<ApplicationFiles | null>(null);
   const [tailoring, setTailoring] = useState(false);
   const [lang, setLang] = useState("en");
@@ -280,27 +313,33 @@ export default function JobDrawer({
             <Separator />
 
             <div className="grid gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Notes
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Notes
+                </span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  {noteSave === "saving" ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" /> Saving…
+                    </>
+                  ) : noteSave === "saved" ? (
+                    <>
+                      <Check className="size-3 text-emerald-600" /> Saved
+                    </>
+                  ) : (
+                    "Autosaves as you type"
+                  )}
+                </span>
+              </div>
               <Textarea
                 rows={4}
                 value={notes}
-                onChange={(e) => setNotes(e.target.value)}
+                onChange={(e) => {
+                  notesDirty.current = true;
+                  setNotes(e.target.value);
+                }}
                 placeholder="Recruiter, referral, next step…"
               />
-              <div>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => {
-                    onSaveNotes(job.id, notes);
-                    toast.success("Notes saved");
-                  }}
-                >
-                  Save notes
-                </Button>
-              </div>
             </div>
 
             <Separator />
