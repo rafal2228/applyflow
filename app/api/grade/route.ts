@@ -2,6 +2,7 @@ import { getJob, saveRank } from "@/lib/db";
 import { gradeJob } from "@/lib/grader";
 import { llmInfo } from "@/lib/llm";
 import {
+  cancelGradeRun,
   getGradeRun,
   pauseGradeRun,
   resumeGradeRun,
@@ -57,5 +58,6 @@ export async function POST(req: Request) {
   if (action === "start") return Response.json({ run: startGradeRun() });
   if (action === "pause") return Response.json({ run: pauseGradeRun() });
   if (action === "resume") return Response.json({ run: resumeGradeRun() });
+  if (action === "cancel") return Response.json({ run: cancelGradeRun() });
   return Response.json({ error: `Unknown action "${action}"` }, { status: 400 });
 }

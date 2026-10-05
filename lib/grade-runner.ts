@@ -13,6 +13,7 @@ interface Store {
   index: number;
   running: boolean;
   paused: boolean;
+  cancelled: boolean;
   generation: number;
   startedAt: string | null;
   finishedAt: string | null;
@@ -31,6 +32,7 @@ function store(): Store {
       index: 0,
       running: false,
       paused: false,
+      cancelled: false,
       generation: 0,
       startedAt: null,
       finishedAt: null,
@@ -52,6 +54,7 @@ export function getGradeRun(): GradeRunState {
     remaining: Math.max(0, s.ids.length - s.index),
     running: s.running,
     paused: s.paused,
+    cancelled: s.cancelled,
     startedAt: s.startedAt,
     finishedAt: s.finishedAt,
     currentTitle: s.currentTitle,
@@ -69,6 +72,7 @@ export function startGradeRun(): GradeRunState {
   s.index = 0;
   s.running = true;
   s.paused = false;
+  s.cancelled = false;
   s.startedAt = nowIso();
   s.finishedAt = null;
   s.currentTitle = null;
@@ -96,6 +100,21 @@ export function resumeGradeRun(): GradeRunState {
   return getGradeRun();
 }
 
+/** Stop the current run, discarding the rest of its queued ids. */
+export function cancelGradeRun(): GradeRunState {
+  const s = store();
+  if (s.running) {
+    s.generation++;
+    s.running = false;
+    s.paused = false;
+    s.cancelled = true;
+    s.currentTitle = null;
+    s.currentCompany = null;
+    s.finishedAt = nowIso();
+  }
+  return getGradeRun();
+}
+
 async function runLoop(s: Store, gen: number): Promise<void> {
   while (
     s.running &&
@@ -114,8 +133,10 @@ async function runLoop(s: Store, gen: number): Promise<void> {
     try {
       const result = await gradeJob(job);
       saveRank(job.id, result);
+      if (s.generation !== gen) return; // superseded by a newer run
       s.lastGrade = result.grade;
     } catch (e) {
+      if (s.generation !== gen) return; // superseded by a newer run
       s.errors.push({ id, error: (e as Error).message });
     }
     s.index++;

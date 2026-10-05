@@ -5,12 +5,15 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   FileText,
+  GitMerge,
   Loader2,
   Pause,
   Play,
   Plus,
+  RotateCcw,
   Settings2,
   Sparkles,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,7 +104,9 @@ export default function Board({
         const running = !!run?.running;
         if (wasRunning && !running) {
           void refresh();
-          if (run && run.failed > 0)
+          if (run?.cancelled)
+            toast.message(`Grading stopped — ${run.done} graded`);
+          else if (run && run.failed > 0)
             toast.error(`Grading finished with ${run.failed} error(s)`);
           else if (run) toast.success(`Graded ${run.done} offer(s)`);
         }
@@ -198,7 +203,7 @@ export default function Board({
     }
   }
 
-  async function gradeAction(action: "start" | "pause" | "resume") {
+  async function gradeAction(action: "start" | "pause" | "resume" | "cancel") {
     try {
       const res = await fetch("/api/grade", {
         method: "POST",
@@ -209,6 +214,7 @@ export default function Board({
       if (!res.ok) throw new Error(data.error ?? "Grading failed");
       setGradeRun(data.run as GradeRunState);
       if (action === "start") toast.message("Grading scheduled");
+      if (action === "cancel") toast.message("Grading stopped");
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -292,6 +298,25 @@ export default function Board({
               >
                 {gradeRun.paused ? <Play /> : <Pause />}
                 {gradeRun.paused ? "Resume" : "Pause"}
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                title="Restart and include newly added jobs"
+                onClick={() => gradeAction("start")}
+              >
+                <RotateCcw />
+                Restart
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                className="text-destructive hover:text-destructive"
+                title="Stop grading"
+                onClick={() => gradeAction("cancel")}
+              >
+                <X />
+                Stop
               </Button>
             </div>
           ) : (

@@ -85,6 +85,7 @@ export interface GradeRunState {
   remaining: number;
   running: boolean;
   paused: boolean;
+  cancelled: boolean;
   startedAt: string | null;
   finishedAt: string | null;
   currentTitle: string | null;
