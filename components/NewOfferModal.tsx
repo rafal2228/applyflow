@@ -41,6 +41,7 @@ const EMPTY: NewJobInput = {
 const START_OPTIONS = [
   { value: "new", label: "Inbox" },
   { value: "shortlisted", label: "Shortlisted" },
+  { value: "parked", label: "Parked" },
   { value: "applied", label: "Applied" },
 ];
 

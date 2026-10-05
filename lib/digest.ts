@@ -73,7 +73,7 @@ export function buildDigest(): DigestRecord {
   const lines: string[] = [
     `# Job digest — ${day}`,
     ``,
-    `**Pipeline:** ${c.total ?? 0} tracked · ${c.shortlisted ?? 0} shortlisted · ${c.applied ?? 0} applied · ${c.interview ?? 0} interview · ${c.offer ?? 0} offer`,
+    `**Pipeline:** ${c.total ?? 0} tracked · ${c.shortlisted ?? 0} shortlisted · ${c.parked ?? 0} parked · ${c.applied ?? 0} applied · ${c.interview ?? 0} interview · ${c.offer ?? 0} offer`,
     ``,
   ];
 

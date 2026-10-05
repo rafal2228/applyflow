@@ -3,6 +3,7 @@
 export type JobStatus =
   | "new"
   | "shortlisted"
+  | "parked"
   | "applied"
   | "interview"
   | "rejected"
@@ -123,6 +124,7 @@ export interface NewJobInput {
 export const STATUSES: JobStatus[] = [
   "new",
   "shortlisted",
+  "parked",
   "applied",
   "interview",
   "offer",
@@ -134,6 +136,7 @@ export const STATUSES: JobStatus[] = [
 export const STATUS_LABELS: Record<JobStatus, string> = {
   new: "Inbox",
   shortlisted: "Shortlisted",
+  parked: "Parked",
   applied: "Applied",
   interview: "Interview",
   offer: "Offer",
@@ -146,6 +149,7 @@ export const STATUS_LABELS: Record<JobStatus, string> = {
 export const OPEN_STATUSES: JobStatus[] = [
   "new",
   "shortlisted",
+  "parked",
   "applied",
   "interview",
   "offer",

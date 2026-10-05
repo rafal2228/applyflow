@@ -27,6 +27,8 @@ export function statusDotClass(status: JobStatus): string {
       return "bg-slate-400";
     case "shortlisted":
       return "bg-indigo-500";
+    case "parked":
+      return "bg-amber-500";
     case "applied":
       return "bg-blue-500";
     case "interview":
