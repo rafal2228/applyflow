@@ -1,11 +1,13 @@
 # ApplyFlow
 
-The friendly control room for your job search: a **Kanban board** plus
-**finding, grading, tailoring and managing** — all in one self-contained app.
+A self-contained control room for your job search: **find** roles, **grade**
+them A–F, **tailor** your CV and cover letters, and **manage** it all on a
+Kanban board.
 
-Clean stack: **Next.js (App Router) + React + TypeScript + Tailwind**, UI built
-from **shadcn/ui on Base UI**, storage in a local **SQLite** file (built-in
-`node:sqlite`), and any **OpenAI-compatible** LLM endpoint for grading/tailoring.
+The stack is deliberately small: **Next.js (App Router) + React + TypeScript +
+Tailwind**, UI built from **shadcn/ui on Base UI**, storage in a local
+**SQLite** file (via the built-in `node:sqlite`), and any **OpenAI-compatible**
+LLM endpoint for grading and tailoring.
 
 ```
 ┌──────────────────────────── ApplyFlow ─────────────────────────────┐
@@ -19,56 +21,57 @@ from **shadcn/ui on Base UI**, storage in a local **SQLite** file (built-in
 
 Everything lives inside this repo — no other project or service is required.
 
-## What you can do
+## Features
 
-**Find jobs**
-- Run discovery from 8 sources — Remotive, RemoteOK, We Work Remotely, Hacker
-  News, justjoin.it, NoFluffJobs, Adzuna (optional keys), and company ATS boards
-  (Greenhouse/Lever/Ashby) — and pick which ones to run.
+### Find jobs
+- Discover from 8 sources — Remotive, RemoteOK, We Work Remotely, Hacker News,
+  justjoin.it, NoFluffJobs, Adzuna (optional keys), and company ATS boards
+  (Greenhouse/Lever/Ashby) — and choose which ones to run.
 - One-click **Daily run** (discover → expire → digest), **Expire stale**,
-  **Market snapshot**, **Write digest**, with a live log console.
+  **Market snapshot**, and **Write digest**, each with a live log console.
 
-**Grade**
+### Grade
 - **Grade new (n)** schedules **every** ungraded offer and works through them in
-  the background — the header shows live progress (done/total, remaining, current
-  job) plus **Pause/Resume**. Per-card grading is still one click.
-- Grades are A–F with a reason, pros & cons, against your CV + brief; grading
-  promotes `new → shortlisted` automatically.
+  the background. The header shows live progress (done/total, remaining, current
+  job) plus **Pause/Resume**; per-card grading is still one click.
+- Grades run A–F with a reason, pros and cons, judged against your CV and brief.
+  A good grade promotes an offer from `new` to `shortlisted` automatically.
 
-**Tailor**
-- From any card: **Tailor** generates a job-specific CV + cover letter (EN/PL),
-  grounded only in your `profile/CV.md` + `profile/BRIEF.md`. Artifacts are saved
-  under `applications/<slug>/` and viewable in the drawer.
+### Tailor
+- From any card, **Tailor** generates a job-specific CV and cover letter (EN/PL),
+  grounded only in your `profile/CV.md` and `profile/BRIEF.md`. Artifacts are
+  saved under `applications/<slug>/` and viewable in the drawer.
 - **Dedicated cover letter** — write a focused cover letter on demand, edit it by
-  hand, and copy it in one click. It's **persisted on the offer** (not a file),
+  hand, and copy it in one click. It is **persisted on the offer** (not a file),
   autosaves as you type, and can be regenerated anytime. See
   [`docs/cover-letter.md`](docs/cover-letter.md).
 
-**Manage**
+### Manage
 - **Kanban pipeline** — `Inbox · Shortlisted · Applied · Interview · Offer`, plus
-  an always-visible **Backlog** column that collects `Rejected · Skipped ·
-  Expired` offers. Drag a card into the Backlog (or set the status in the drawer),
-  then **Restore** it later and it returns to `Shortlisted`.
+  an always-visible **Backlog** column for `Rejected · Skipped · Expired`. Drag a
+  card into the Backlog (or set the status in the drawer), then **Restore** it
+  later to send it back to `Shortlisted`.
 - **Drag & drop** cards between columns; moving to **Applied** sets a +7-day
   follow-up.
 - **Add offers** by pasting a posting URL (parsed automatically from Greenhouse/
-  Lever APIs, schema.org JSON-LD or OpenGraph) or by entering them manually. The
-  **loaded-from URL is saved** so you can reopen the posting, and every field stays
-  editable before and after saving.
+  Lever APIs, schema.org JSON-LD, or OpenGraph) or by entering them manually. The
+  **loaded-from URL is saved** so you can reopen the posting, and every field
+  stays editable before and after saving.
 - **Digests** are a first-class in-app view at `/digests` with history: generate
-  today's, browse past days, and read the shortlist + market summary rendered as
-  markdown.
+  today's, browse past days, and read the shortlist and market summary rendered
+  as markdown.
 - **Duplicate review** — cross-posted roles are fingerprinted as they are
   ingested (MinHash + LSH bands + SimHash mask) and queued for review instead of
-  being silently dropped. A local [Laya](https://huggingface.co/convaiinnovations/laya)
-  decision model judges each candidate pair on request; you confirm or keep both.
-  See [Duplicate review](#duplicate-review).
+  being silently dropped. A local
+  [Laya](https://huggingface.co/convaiinnovations/laya) decision model judges
+  each candidate pair on request; you confirm or keep both. See
+  [Duplicate review](#duplicate-review).
 - Per-job notes and a live market table (Poland vs global remote).
 
 ## Setup
 
-Requires **Node ≥ 24** (for the built-in `node:sqlite`). The database and all
-output folders are created automatically on first run.
+ApplyFlow requires **Node ≥ 24** (for the built-in `node:sqlite`). The database
+and all output folders are created automatically on first run.
 
 ```bash
 git clone <this repo> && cd applyflow
@@ -79,7 +82,7 @@ npm run dev                       # http://localhost:3000
 
 To use the local duplicate-decision engine you also need
 [`uv`](https://docs.astral.sh/uv/); it provisions Python ≥ 3.10 and Laya's
-dependencies for you (no system Python required):
+dependencies for you, so no system Python is required:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv
@@ -90,8 +93,8 @@ npm run laya:serve                                # http://0.0.0.0:8000
 
 `npm run laya:serve` runs `uv run --project laya laya-serve`; `uv` creates
 `laya/.venv`, installs `laya[serve]`, and downloads the model checkpoint on
-first use. Duplicate review works without it (fingerprints are still queued and
-the LLM fallback is used if `OPENAI_*` is set).
+first use. Duplicate review works without it: fingerprints are still queued, and
+the LLM fallback is used if `OPENAI_*` is set.
 
 ### Profile
 
@@ -100,9 +103,8 @@ Grading and tailoring read your CV and targeting brief from `profile/`:
 - `profile/CV.md` — your CV.
 - `profile/BRIEF.md` — target roles, remote/comp preferences, dealbreakers.
 
-Copies of the example templates (`profile/CV.example.md`,
-`profile/BRIEF.example.md`) are committed; the real files are gitignored so your
-personal data stays local.
+Example templates (`profile/CV.example.md`, `profile/BRIEF.example.md`) are
+committed; the real files are gitignored so your personal data stays local.
 
 ### Configuration (`.env.local`)
 
@@ -130,19 +132,19 @@ The LLM client only assumes a standard `POST {base}/chat/completions` API — it
 The same role is routinely cross-posted across boards with different titles and
 company spellings, so an exact key is not enough.
 
-1. **Fingerprint** — on ingest each offer is normalised and reduced to a MinHash
-   signature, LSH bands and a SimHash mask (title/company/location/tags).
+1. **Fingerprint** — on ingest, each offer is normalised and reduced to a MinHash
+   signature, LSH bands, and a SimHash mask (title/company/location/tags).
 2. **Narrow** — only offers that collide on an LSH band become *candidates*; a
    similarity threshold and a company-name gate trim them down. Nothing is
    auto-dropped — candidates are queued with both offers flagged.
-3. **Decide** — *Duplicates → AI scan* asks the local Laya model if a pair is
-   the same role (falls back to `OPENAI_*` if Laya is not configured).
+3. **Decide** — *Duplicates → AI scan* asks the local Laya model whether a pair is
+   the same role (falling back to `OPENAI_*` if Laya is not configured).
 4. **Review** — a human clicks **Mark duplicate** (archives the newer offer and
    links it) or **Keep both**. Pending pairs appear in the digest too.
-5. **Bulk accept** — *Duplicates* offers **Accept same (N)** for pairs the
-   engine judged the same role at/above `DUPLICATE_ACCEPT_CONFIDENCE` (default
-   **80%**) and **Dismiss different (M)** for the high-confidence negative
-   verdicts; each action has a confirm step.
+5. **Bulk accept** — *Duplicates* offers **Accept same (N)** for pairs the engine
+   judged the same role at or above `DUPLICATE_ACCEPT_CONFIDENCE` (default
+   **80%**) and **Dismiss different (M)** for high-confidence negative verdicts;
+   each action has a confirm step.
 
 Start the local decision server with [`uv`](https://docs.astral.sh/uv/) (it
 provisions Python and the environment itself):
@@ -160,8 +162,8 @@ generative, so grading and digests still use the OpenAI-compatible endpoint. See
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
 (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:` …). A **commitlint** `commit-msg`
-hook (via Husky) validates every message; the hook is installed automatically by
-`npm install` through the `prepare` script.
+hook (via Husky) validates every message, and the hook is installed automatically
+by `npm install` through the `prepare` script.
 
 ```bash
 npm run typecheck            # tsc --noEmit
@@ -171,5 +173,5 @@ echo "feat: x" | npm run lint:commit   # validate a message manually
 ## Tuning discovery
 
 Edit `lib/config.ts` to change target titles, stack keywords, exclusions, Adzuna
-queries and market keywords. Add companies to `lib/sources/ats-companies.ts`, or
-drop a `seed-companies.json` array next to it to extend the ATS board list.
+queries, and market keywords. Add companies to `lib/sources/ats-companies.ts`,
+or drop a `seed-companies.json` array next to it to extend the ATS board list.
