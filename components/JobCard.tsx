@@ -97,6 +97,14 @@ export default function JobCard({
         )}
         {job.tailored && <Badge variant="secondary">Tailored</Badge>}
         {job.coverLetter && <Badge variant="secondary">Cover letter</Badge>}
+        {job.dupReview && (
+          <Badge
+            variant="outline"
+            className="border-amber-300 bg-amber-50 text-amber-800"
+          >
+            Possible duplicate
+          </Badge>
+        )}
         {job.appliedAt && (
           <Badge variant="outline" title={`Applied ${dateTime(job.appliedAt)}`}>
             Applied {shortDate(job.appliedAt)}

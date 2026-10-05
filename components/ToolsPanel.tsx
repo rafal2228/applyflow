@@ -8,6 +8,7 @@ import {
   DownloadCloud,
   FileText,
   Gauge,
+  GitMerge,
   ListChecks,
   Loader2,
   RefreshCw,
@@ -27,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { RunState, RunSummary } from "@/lib/pipeline";
+import DuplicatesReview from "./DuplicatesReview";
 
 interface SourceInfo {
   name: string;
@@ -81,6 +83,13 @@ const MAINTENANCE: {
       "Record today's keyword counts (Poland vs global remote) for trends.",
     icon: <RefreshCw />,
   },
+  {
+    action: "duplicates",
+    title: "Find duplicates",
+    description:
+      "Fingerprint offers, narrow candidates with LSH bands, then ask the local decision engine.",
+    icon: <GitMerge />,
+  },
 ];
 
 function elapsedText(
@@ -107,10 +116,12 @@ export default function ToolsPanel({
   open,
   onOpenChange,
   onChanged,
+  initialTab,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChanged: () => void;
+  initialTab?: string;
 }) {
   const [info, setInfo] = useState<PipelineInfo | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -136,6 +147,11 @@ export default function ToolsPanel({
     const res = await fetch("/api/market", { cache: "no-store" });
     if (res.ok) setMarket((await res.json()).counts as MarketRow[]);
   }, []);
+
+  // Open on a specific tab when the caller asks for one (e.g. duplicates).
+  useEffect(() => {
+    if (open && initialTab) setTab(initialTab);
+  }, [open, initialTab]);
 
   // Single poll loop: refreshes the run list, the selected run, market, clock.
   useEffect(() => {
@@ -281,6 +297,7 @@ export default function ToolsPanel({
               )}
             </TabsTrigger>
             <TabsTrigger value="market">Market</TabsTrigger>
+            <TabsTrigger value="duplicates">Duplicates</TabsTrigger>
           </TabsList>
 
           {/* ------------------------------- Find ------------------------------- */}
@@ -519,6 +536,11 @@ export default function ToolsPanel({
                 </tbody>
               </table>
             </div>
+          </TabsContent>
+
+          {/* ---------------------------- Duplicates ---------------------------- */}
+          <TabsContent value="duplicates" className="min-h-0 overflow-y-auto pt-3">
+            <DuplicatesReview onChanged={onChanged} />
           </TabsContent>
         </Tabs>
       </DialogContent>

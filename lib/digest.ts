@@ -1,5 +1,7 @@
 import {
   counts,
+  crossSourcePendingCount,
+  crossSourcePendingReviews,
   dueFollowUps,
   getDigest as getDigestRow,
   listDigests as listDigestRows,
@@ -95,6 +97,24 @@ export function buildDigest(): DigestRecord {
       lines.push(`\n### Grade ${g} (${byGrade[g].length})`);
       for (const j of byGrade[g]) lines.push(jobLine(j));
     }
+  }
+
+  // Only cross-source pairs are real duplicates; a single board's per-region
+  // reposts are not. (Detection filters these, but old queues may hold them.)
+  const duplicateTotal = crossSourcePendingCount();
+  if (duplicateTotal) {
+    lines.push(``, `## Duplicates to review (${duplicateTotal})`, ``);
+    for (const d of crossSourcePendingReviews(10)) {
+      const verdict = d.decision
+        ? ` · ${d.decision}${d.confidence != null ? ` ${Math.round(d.confidence * 100)}%` : ""}`
+        : "";
+      lines.push(
+        `- [${d.job.title} @ ${d.job.company}](${d.job.url}) ↔ ` +
+          `[${d.candidate.title} @ ${d.candidate.company}](${d.candidate.url})` +
+          ` — ${Math.round(d.score * 100)}% match${verdict}`,
+      );
+    }
+    if (duplicateTotal > 10) lines.push(`- …and ${duplicateTotal - 10} more.`);
   }
 
   lines.push(``, `## Market (matching postings)`, ``);

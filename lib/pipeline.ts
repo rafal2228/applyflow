@@ -3,12 +3,23 @@ import { discover, SOURCES } from "./discovery";
 import { buildDigest } from "./digest";
 import { snapshotMarket } from "./market";
 import { expireStale } from "./db";
+import {
+  decisionEngineAvailable,
+  rebuildDuplicateCandidates,
+  scanPendingDuplicates,
+} from "./duplicates";
 import { nowIso } from "./util";
 
 export { SOURCES };
 
 /** Background tasks the UI can trigger. */
-export type TaskAction = "discover" | "daily" | "expire" | "digest" | "monitor";
+export type TaskAction =
+  | "discover"
+  | "daily"
+  | "expire"
+  | "digest"
+  | "monitor"
+  | "duplicates";
 
 export const ACTIONS: TaskAction[] = [
   "discover",
@@ -16,6 +27,7 @@ export const ACTIONS: TaskAction[] = [
   "expire",
   "digest",
   "monitor",
+  "duplicates",
 ];
 
 const LABELS: Record<TaskAction, string> = {
@@ -24,6 +36,7 @@ const LABELS: Record<TaskAction, string> = {
   expire: "Expire stale jobs",
   digest: "Write digest",
   monitor: "Market snapshot",
+  duplicates: "Find duplicates (fingerprint → AI)",
 };
 
 export interface RunState {
@@ -117,6 +130,9 @@ async function execute(
       case "monitor":
         doMonitor(log);
         break;
+      case "duplicates":
+        await doDuplicates(log);
+        break;
     }
     run.exitCode = 0;
     push(run, "✓ done");
@@ -156,6 +172,23 @@ function doMonitor(log: (m: string) => void): void {
   const { day, counts } = snapshotMarket();
   log(`snapshot ${day}: ${counts.length} keywords`);
   for (const c of counts) log(`  ${c.keyword}: PL ${c.pl} · global ${c.remoteGlobal}`);
+}
+
+async function doDuplicates(log: (m: string) => void): Promise<void> {
+  const rebuilt = rebuildDuplicateCandidates();
+  log(
+    `fingerprinted ${rebuilt.indexed} job(s), ${rebuilt.candidates} candidate pair(s)`,
+  );
+  if (!decisionEngineAvailable()) {
+    log("no decision engine configured — pairs left pending for manual review");
+    return;
+  }
+  const scan = await scanPendingDuplicates(50);
+  log(
+    `AI scan: ${scan.scanned} judged (${scan.same} same, ${scan.different} different)` +
+      (scan.skipped ? `, ${scan.skipped} skipped` : ""),
+  );
+  for (const err of scan.errors) log(`  ! ${err}`);
 }
 
 function push(run: RunState, line: string): void {

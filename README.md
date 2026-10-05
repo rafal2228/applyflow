@@ -58,18 +58,40 @@ Everything lives inside this repo — no other project or service is required.
 - **Digests** are a first-class in-app view at `/digests` with history: generate
   today's, browse past days, and read the shortlist + market summary rendered as
   markdown.
+- **Duplicate review** — cross-posted roles are fingerprinted as they are
+  ingested (MinHash + LSH bands + SimHash mask) and queued for review instead of
+  being silently dropped. A local [Laya](https://huggingface.co/convaiinnovations/laya)
+  decision model judges each candidate pair on request; you confirm or keep both.
+  See [Duplicate review](#duplicate-review).
 - Per-job notes and a live market table (Poland vs global remote).
 
 ## Setup
 
+Requires **Node ≥ 24** (for the built-in `node:sqlite`). The database and all
+output folders are created automatically on first run.
+
 ```bash
+git clone <this repo> && cd applyflow
 cp .env.example .env.local        # fill in OPENAI_* to enable grading/tailoring
 npm install
 npm run dev                       # http://localhost:3000
 ```
 
-Requires **Node ≥ 24** (for the built-in `node:sqlite`). The database and all
-output folders are created automatically on first run.
+To use the local duplicate-decision engine you also need
+[`uv`](https://docs.astral.sh/uv/); it provisions Python ≥ 3.10 and Laya's
+dependencies for you (no system Python required):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv
+npm run laya:serve                                # http://0.0.0.0:8000
+# in another terminal (or after starting it once):
+#   echo 'LAYA_BASE_URL=http://127.0.0.1:8000' >> .env.local
+```
+
+`npm run laya:serve` runs `uv run --project laya laya-serve`; `uv` creates
+`laya/.venv`, installs `laya[serve]`, and downloads the model checkpoint on
+first use. Duplicate review works without it (fingerprints are still queued and
+the LLM fallback is used if `OPENAI_*` is set).
 
 ### Profile
 
@@ -95,9 +117,44 @@ personal data stays local.
 | `OPENAI_BASE_URL` | — | Base URL of any OpenAI-compatible endpoint. |
 | `OPENAI_API_KEY` | — | Bearer token for that endpoint. |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model id sent to the endpoint. |
+| `LAYA_BASE_URL` | — | Local Laya server for duplicate decisions (see below). |
+| `LAYA_API_KEY` | — | Optional bearer token for `laya-serve`. |
+| `DUPLICATE_THRESHOLD` | `0.5` | Min fingerprint similarity to queue a pair. |
+| `DUPLICATE_ACCEPT_CONFIDENCE` | `0.8` | Min AI confidence for “Accept all”. |
 
 The LLM client only assumes a standard `POST {base}/chat/completions` API — it is
 **not tied to any specific vendor or backend**.
+
+### Duplicate review
+
+The same role is routinely cross-posted across boards with different titles and
+company spellings, so an exact key is not enough.
+
+1. **Fingerprint** — on ingest each offer is normalised and reduced to a MinHash
+   signature, LSH bands and a SimHash mask (title/company/location/tags).
+2. **Narrow** — only offers that collide on an LSH band become *candidates*; a
+   similarity threshold and a company-name gate trim them down. Nothing is
+   auto-dropped — candidates are queued with both offers flagged.
+3. **Decide** — *Duplicates → AI scan* asks the local Laya model if a pair is
+   the same role (falls back to `OPENAI_*` if Laya is not configured).
+4. **Review** — a human clicks **Mark duplicate** (archives the newer offer and
+   links it) or **Keep both**. Pending pairs appear in the digest too.
+5. **Bulk accept** — *Duplicates* offers **Accept same (N)** for pairs the
+   engine judged the same role at/above `DUPLICATE_ACCEPT_CONFIDENCE` (default
+   **80%**) and **Dismiss different (M)** for the high-confidence negative
+   verdicts; each action has a confirm step.
+
+Start the local decision server with [`uv`](https://docs.astral.sh/uv/) (it
+provisions Python and the environment itself):
+
+```bash
+npm run laya:serve                 # uv run --project laya laya-serve
+# then set LAYA_BASE_URL=http://127.0.0.1:8000 in .env.local
+```
+
+Laya is a non-autoregressive decision model — fast and free to self-host, but not
+generative, so grading and digests still use the OpenAI-compatible endpoint. See
+[`laya/README.md`](laya/README.md).
 
 ## Development
 

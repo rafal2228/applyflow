@@ -44,6 +44,10 @@ export interface JobRow {
   tailored: boolean;
   notes: string | null;
   coverLetter: string | null;
+  /** Canonical job id once a human confirms this offer is a duplicate. */
+  duplicateOf: string | null;
+  /** True while this offer has at least one unresolved duplicate candidate. */
+  dupReview: boolean;
 }
 
 /** A posting after normalisation into one schema (used by discovery). */
@@ -106,6 +110,32 @@ export interface ImportedOffer {
   tags: string[];
   postedAt: string | null;
   source: string;
+}
+
+export type DuplicateStatus = "pending" | "confirmed" | "dismissed";
+
+/** How a candidate pair was judged by the decision engine. */
+export type DuplicateDecision = "exact" | "same" | "different" | null;
+
+/** One candidate duplicate pair awaiting (or after) human review. */
+export interface DuplicateReview {
+  id: string;
+  /** The newer / incoming offer. */
+  job: JobRow;
+  /** The older offer it may duplicate. */
+  candidate: JobRow;
+  /** Estimated similarity 0–1 from the fingerprint. */
+  score: number;
+  /** Number of LSH bands the two share (candidate strength). */
+  sharedBands: number;
+  /** Which engine made the decision (laya / llm), if any. */
+  engine: string | null;
+  decision: DuplicateDecision;
+  confidence: number | null;
+  reason: string | null;
+  status: DuplicateStatus;
+  createdAt: string;
+  decidedAt: string | null;
 }
 
 export interface NewJobInput {

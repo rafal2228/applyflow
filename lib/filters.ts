@@ -1,4 +1,11 @@
-import type { Grade, JobRow } from "./types";
+import type { Grade, JobRow, JobStatus } from "./types";
+
+/**
+ * Statuses that represent work already done. A possible-duplicate flag must
+ * never hide these: an applied/interview/offer card vanishing from the board
+ * is indistinguishable from data loss.
+ */
+const ACTIONED_STATUSES: JobStatus[] = ["applied", "interview", "offer"];
 
 /** Comprehensive board filters (client-side, over the loaded jobs). */
 export interface BoardFiltersState {
@@ -13,6 +20,8 @@ export interface BoardFiltersState {
   geo: string; // "all" or a concrete geo value
   recentDays: "any" | "7" | "14" | "30";
   sources: string[]; // empty = all
+  /** Hide un-actioned offers waiting in the duplicate review queue (off by default). */
+  hideDuplicates: boolean;
 }
 
 export const DEFAULT_FILTERS: BoardFiltersState = {
@@ -27,6 +36,7 @@ export const DEFAULT_FILTERS: BoardFiltersState = {
   geo: "all",
   recentDays: "any",
   sources: [],
+  hideDuplicates: false,
 };
 
 const GRADE_ORDER = "ABCDEF";
@@ -50,6 +60,7 @@ export function countActiveFilters(f: BoardFiltersState): number {
   if (f.geo !== "all") n++;
   if (f.recentDays !== "any") n++;
   if (f.sources.length) n++;
+  if (f.hideDuplicates) n++;
   return n;
 }
 
@@ -87,6 +98,12 @@ export function applyBoardFilters(
       if (days > Number(filters.recentDays)) return false;
     }
     if (filters.sources.length && !filters.sources.includes(j.source)) return false;
+    if (
+      filters.hideDuplicates &&
+      j.dupReview &&
+      !ACTIONED_STATUSES.includes(j.status)
+    )
+      return false;
     return true;
   });
 }

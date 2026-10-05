@@ -69,11 +69,46 @@ CREATE TABLE IF NOT EXISTS jobs (
   last_seen_at TEXT,
   tailored INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
-  cover_letter TEXT
+  cover_letter TEXT,
+  duplicate_of TEXT,
+  dup_review INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_grade ON jobs(grade);
+
+CREATE TABLE IF NOT EXISTS job_fingerprints (
+  job_id TEXT PRIMARY KEY,
+  signature TEXT NOT NULL,
+  mask TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_job_fingerprints_mask ON job_fingerprints(mask);
+
+CREATE TABLE IF NOT EXISTS job_bands (
+  job_id TEXT NOT NULL,
+  band TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_job_bands_band ON job_bands(band);
+CREATE INDEX IF NOT EXISTS idx_job_bands_job ON job_bands(job_id);
+
+CREATE TABLE IF NOT EXISTS job_duplicates (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  candidate_id TEXT NOT NULL,
+  score REAL NOT NULL DEFAULT 0,
+  shared_bands INTEGER NOT NULL DEFAULT 0,
+  engine TEXT,
+  decision TEXT,
+  confidence REAL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_job_duplicates_pair
+  ON job_duplicates(job_id, candidate_id);
+CREATE INDEX IF NOT EXISTS idx_job_duplicates_status ON job_duplicates(status);
 
 CREATE TABLE IF NOT EXISTS market_snapshots (
   day TEXT NOT NULL,
@@ -237,6 +272,8 @@ function rowToJob(r: Row): JobRow {
     tailored: !!r.tailored,
     notes: (r.notes as string) ?? null,
     coverLetter: (r.cover_letter as string) ?? null,
+    duplicateOf: (r.duplicate_of as string) ?? null,
+    dupReview: !!r.dup_review,
   };
 }
 
@@ -432,7 +469,11 @@ export function snapshotTrend(
 
 export type UpsertResult = "inserted" | "duplicate" | "exists";
 
-/** Insert a discovered job, skipping ids we have and cross-source dedup hits. */
+/**
+ * Insert a discovered job. Re-seen ids just bump `last_seen_at`; a cross-source
+ * exact key match is still inserted and pushed to the duplicate review queue
+ * rather than dropped.
+ */
 export function upsertJob(job: NormalizedJob): UpsertResult {
   const d = db();
   const now = nowIso();
@@ -440,13 +481,21 @@ export function upsertJob(job: NormalizedJob): UpsertResult {
     d.prepare("UPDATE jobs SET last_seen_at = ? WHERE id = ?").run(now, job.id);
     return "exists";
   }
-  if (d.prepare("SELECT 1 FROM jobs WHERE dedup_key = ?").get(job.dedupKey)) {
-    d.prepare("UPDATE jobs SET last_seen_at = ? WHERE dedup_key = ?").run(
+  // A same board re-listing the same role (e.g. one posting per region) is a
+  // repost, not a cross-source duplicate: drop it like before and just bump the
+  // original. Only a genuinely cross-source match goes to the review queue.
+  const matches = d
+    .prepare("SELECT id, source FROM jobs WHERE dedup_key = ? AND id <> ?")
+    .all(job.dedupKey, job.id) as Row[];
+  const sameSource = matches.find((m) => m.source === job.source);
+  if (sameSource) {
+    d.prepare("UPDATE jobs SET last_seen_at = ? WHERE id = ?").run(
       now,
-      job.dedupKey,
+      sameSource.id as string,
     );
     return "duplicate";
   }
+  const crossSource = matches[0];
   d.prepare(
     `INSERT INTO jobs (id, source, source_id, url, source_url, title, company,
        location, remote, geo, description, tags, salary_text, posted_at,
@@ -472,6 +521,19 @@ export function upsertJob(job: NormalizedJob): UpsertResult {
     JSON.stringify(job.raw),
     job.discoveredAt,
   );
+
+  if (crossSource) {
+    saveDuplicateCandidate({
+      jobId: job.id,
+      candidateId: crossSource.id as string,
+      score: 1,
+      engine: "exact",
+      decision: "exact",
+      confidence: 1,
+      reason: "Identical normalised company + title (cross-source)",
+    });
+    return "duplicate";
+  }
   return "inserted";
 }
 
@@ -510,6 +572,388 @@ export function expireStale(days: number): JobRow[] {
     for (const j of stale) upd.run(j.id);
   }
   return stale;
+}
+
+// --- duplicate fingerprints + review queue ---
+
+/** Upsert a job's MinHash signature / bands / SimHash mask. */
+export function saveFingerprint(jobIdValue: string, fp: Fingerprint): void {
+  const d = db();
+  d.prepare(
+    `INSERT INTO job_fingerprints (job_id, signature, mask, updated_at)
+     VALUES (?,?,?,?)
+     ON CONFLICT(job_id) DO UPDATE SET
+       signature=excluded.signature, mask=excluded.mask, updated_at=excluded.updated_at`,
+  ).run(jobIdValue, JSON.stringify(fp.signature), fp.mask, nowIso());
+  d.prepare("DELETE FROM job_bands WHERE job_id = ?").run(jobIdValue);
+  const ins = d.prepare("INSERT INTO job_bands (job_id, band) VALUES (?,?)");
+  for (const band of fp.bands) ins.run(jobIdValue, band);
+}
+
+export function getFingerprint(
+  jobIdValue: string,
+): { signature: number[]; mask: string } | null {
+  const r = db()
+    .prepare("SELECT signature, mask FROM job_fingerprints WHERE job_id=?")
+    .get(jobIdValue) as Row | undefined;
+  if (!r) return null;
+  return {
+    signature: JSON.parse(r.signature as string) as number[],
+    mask: r.mask as string,
+  };
+}
+
+export interface CandidateFingerprint {
+  jobId: string;
+  signature: number[];
+  mask: string;
+  sharedBands: number;
+}
+
+/**
+ * Candidate jobs that collide on at least one LSH band — the "bloom filter"
+ * narrowing step. They still need an exact similarity check before review.
+ */
+export function candidateFingerprints(
+  bands: string[],
+  excludeId: string,
+  limit = 50,
+): CandidateFingerprint[] {
+  if (!bands.length) return [];
+  const d = db();
+  const placeholders = bands.map(() => "?").join(",");
+  const rows = d
+    .prepare(
+      `SELECT job_id AS jobId, COUNT(DISTINCT band) AS sharedBands
+       FROM job_bands
+       WHERE band IN (${placeholders}) AND job_id <> ?
+       GROUP BY job_id
+       ORDER BY sharedBands DESC
+       LIMIT ?`,
+    )
+    .all(...bands, excludeId, limit) as Row[];
+  const out: CandidateFingerprint[] = [];
+  for (const r of rows) {
+    const fp = getFingerprint(r.jobId as string);
+    if (!fp) continue;
+    out.push({
+      jobId: r.jobId as string,
+      signature: fp.signature,
+      mask: fp.mask,
+      sharedBands: r.sharedBands as number,
+    });
+  }
+  return out;
+}
+
+/** Stable, order-independent id for a pair of jobs. */
+export function duplicatePairId(a: string, b: string): string {
+  const [x, y] = a < b ? [a, b] : [b, a];
+  return `dup:${sha1(`${x}|${y}`).slice(0, 16)}`;
+}
+
+export interface DuplicatePairInput {
+  jobId: string;
+  candidateId: string;
+  score: number;
+  sharedBands?: number;
+  engine?: string | null;
+  decision?: DuplicateDecision;
+  confidence?: number | null;
+  reason?: string | null;
+  status?: DuplicateStatus;
+}
+
+/** Record (or refresh) a candidate pair. Never clobbers a human decision. */
+export function saveDuplicateCandidate(p: DuplicatePairInput): void {
+  const [a, b] = p.jobId < p.candidateId ? [p.jobId, p.candidateId] : [p.candidateId, p.jobId];
+  const id = duplicatePairId(a, b);
+  const d = db();
+  const existing = d.prepare("SELECT status FROM job_duplicates WHERE id=?").get(id) as
+    | Row
+    | undefined;
+  if (existing) {
+    d.prepare(
+      `UPDATE job_duplicates SET
+         score=MAX(score, ?), shared_bands=MAX(shared_bands, ?),
+         engine=COALESCE(?, engine), decision=COALESCE(?, decision),
+         confidence=COALESCE(?, confidence), reason=COALESCE(?, reason)
+       WHERE id=?`,
+    ).run(
+      p.score,
+      p.sharedBands ?? 0,
+      p.engine ?? null,
+      p.decision ?? null,
+      p.confidence ?? null,
+      p.reason ?? null,
+      id,
+    );
+    return;
+  }
+  d.prepare(
+    `INSERT INTO job_duplicates (id, job_id, candidate_id, score, shared_bands,
+       engine, decision, confidence, reason, status, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    id,
+    a,
+    b,
+    p.score,
+    p.sharedBands ?? 0,
+    p.engine ?? null,
+    p.decision ?? null,
+    p.confidence ?? null,
+    p.reason ?? null,
+    p.status ?? "pending",
+    nowIso(),
+  );
+  d.prepare("UPDATE jobs SET dup_review=1 WHERE id IN (?,?)").run(a, b);
+}
+
+function rowToDuplicateReview(r: Row): DuplicateReview | null {
+  const a = getJob(r.job_id as string);
+  const b = getJob(r.candidate_id as string);
+  if (!a || !b) return null;
+  const aNewer = Date.parse(a.discoveredAt) >= Date.parse(b.discoveredAt);
+  return {
+    id: r.id as string,
+    job: aNewer ? a : b,
+    candidate: aNewer ? b : a,
+    score: r.score as number,
+    sharedBands: r.shared_bands as number,
+    engine: (r.engine as string) ?? null,
+    decision: (r.decision as DuplicateDecision) ?? null,
+    confidence: (r.confidence as number) ?? null,
+    reason: (r.reason as string) ?? null,
+    status: r.status as DuplicateStatus,
+    createdAt: r.created_at as string,
+    decidedAt: (r.decided_at as string) ?? null,
+  };
+}
+
+/**
+ * Candidate pairs, newest / strongest first. Optionally filtered by review
+ * status and capped with `limit` (used by the digest).
+ */
+export function listDuplicateReviews(
+  status?: DuplicateStatus,
+  limit?: number,
+): DuplicateReview[] {
+  const args: (string | number)[] = status ? [status] : [];
+  if (limit != null) args.push(limit);
+  const rows = db()
+    .prepare(
+      `SELECT * FROM job_duplicates
+       ${status ? "WHERE status = ?" : ""}
+       ORDER BY (status = 'pending') DESC, score DESC, created_at DESC
+       ${limit != null ? "LIMIT ?" : ""}`,
+    )
+    .all(...args) as Row[];
+  return rows
+    .map(rowToDuplicateReview)
+    .filter((r): r is DuplicateReview => !!r);
+}
+
+/** One page of candidate pairs plus the total for the status filter. */
+export function listDuplicateReviewsPage(
+  status: DuplicateStatus | undefined,
+  limit: number,
+  offset: number,
+): { reviews: DuplicateReview[]; total: number } {
+  const d = db();
+  const where = status ? "WHERE status = ?" : "";
+  const args: (string | number)[] = status ? [status] : [];
+  const total = (
+    d.prepare(`SELECT COUNT(*) n FROM job_duplicates ${where}`).get(...args) as Row
+  ).n as number;
+  const rows = d
+    .prepare(
+      `SELECT * FROM job_duplicates
+       ${where}
+       ORDER BY (status = 'pending') DESC, score DESC, created_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(...args, limit, offset) as Row[];
+  return {
+    reviews: rows
+      .map(rowToDuplicateReview)
+      .filter((r): r is DuplicateReview => !!r),
+    total,
+  };
+}
+
+/** Review counts per status, straight from SQL (no job hydration). */
+export function duplicateReviewCounts(): {
+  pending: number;
+  confirmed: number;
+  dismissed: number;
+} {
+  const rows = db()
+    .prepare("SELECT status, COUNT(*) n FROM job_duplicates GROUP BY status")
+    .all() as Row[];
+  const out = { pending: 0, confirmed: 0, dismissed: 0 };
+  for (const r of rows) {
+    if (r.status === "pending") out.pending = r.n as number;
+    else if (r.status === "confirmed") out.confirmed = r.n as number;
+    else if (r.status === "dismissed") out.dismissed = r.n as number;
+  }
+  return out;
+}
+
+/**
+ * Pending pairs not already judged "exact", strongest first — the AI scan input.
+ * Capped so a huge queue is never hydrated in one go.
+ */
+export function pendingDuplicateReviews(limit: number): DuplicateReview[] {
+  const rows = db()
+    .prepare(
+      `SELECT * FROM job_duplicates
+       WHERE status='pending' AND (decision IS NULL OR decision <> 'exact')
+       ORDER BY score DESC, created_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as Row[];
+  return rows
+    .map(rowToDuplicateReview)
+    .filter((r): r is DuplicateReview => !!r);
+}
+
+/** Pending pair ids at/above `min` confidence for a given verdict. */
+export function highConfidencePairIds(
+  min: number,
+  decision: "same" | "different",
+): { id: string; score: number }[] {
+  return db()
+    .prepare(
+      `SELECT id, score FROM job_duplicates
+       WHERE status='pending' AND decision=? AND confidence IS NOT NULL AND confidence >= ?
+       ORDER BY score DESC`,
+    )
+    .all(decision, min) as { id: string; score: number }[];
+}
+
+/** Pending pairs whose two sides come from different sources (real cross-posts). */
+export function crossSourcePendingReviews(limit: number): DuplicateReview[] {
+  const rows = db()
+    .prepare(
+      `SELECT d.* FROM job_duplicates d
+       JOIN jobs a ON a.id = d.job_id
+       JOIN jobs b ON b.id = d.candidate_id
+       WHERE d.status='pending' AND a.source <> b.source
+       ORDER BY d.score DESC, d.created_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as Row[];
+  return rows
+    .map(rowToDuplicateReview)
+    .filter((r): r is DuplicateReview => !!r);
+}
+
+/** Count of pending cross-source pairs. */
+export function crossSourcePendingCount(): number {
+  return (
+    db()
+      .prepare(
+        `SELECT COUNT(*) n FROM job_duplicates d
+         JOIN jobs a ON a.id = d.job_id
+         JOIN jobs b ON b.id = d.candidate_id
+         WHERE d.status='pending' AND a.source <> b.source`,
+      )
+      .get() as Row
+  ).n as number;
+}
+
+export function getDuplicateReview(id: string): DuplicateReview | null {
+  const r = db().prepare("SELECT * FROM job_duplicates WHERE id=?").get(id) as
+    | Row
+    | undefined;
+  return r ? rowToDuplicateReview(r) : null;
+}
+
+/** Store the decision engine's verdict without changing review status. */
+export function setDuplicateDecision(
+  id: string,
+  v: Pick<DuplicatePairInput, "engine" | "decision" | "confidence" | "reason">,
+): void {
+  db()
+    .prepare(
+      `UPDATE job_duplicates SET engine=?, decision=?, confidence=?, reason=?
+       WHERE id=? AND status='pending'`,
+    )
+    .run(v.engine ?? null, v.decision ?? null, v.confidence ?? null, v.reason ?? null, id);
+}
+
+/** Recompute the `dup_review` flag for one or more jobs. */
+export function refreshDupFlags(ids: string[]): void {
+  const d = db();
+  const pending = d.prepare(
+    "SELECT 1 FROM job_duplicates WHERE status='pending' AND (job_id=? OR candidate_id=?) LIMIT 1",
+  );
+  const upd = d.prepare("UPDATE jobs SET dup_review=? WHERE id=?");
+  for (const id of new Set(ids)) upd.run(pending.get(id, id) ? 1 : 0, id);
+}
+
+/** Confirm a pair (drop the newer, link it) or dismiss it (keep both). */
+export function resolveDuplicatePair(
+  id: string,
+  action: "keep" | "mark",
+): DuplicateReview | null {
+  const d = db();
+  const r = d.prepare("SELECT * FROM job_duplicates WHERE id=?").get(id) as
+    | Row
+    | undefined;
+  if (!r) return null;
+  const a = r.job_id as string;
+  const b = r.candidate_id as string;
+
+  if (action === "mark") {
+    const ja = getJob(a);
+    const jb = getJob(b);
+    if (ja && jb) {
+      const dup = Date.parse(ja.discoveredAt) >= Date.parse(jb.discoveredAt) ? ja : jb;
+      const canonical = dup.id === ja.id ? jb : ja;
+      d.prepare("UPDATE jobs SET duplicate_of=?, status='skipped' WHERE id=?").run(
+        canonical.id,
+        dup.id,
+      );
+    }
+    d.prepare(
+      "UPDATE job_duplicates SET status='confirmed', decided_at=? WHERE id=?",
+    ).run(nowIso(), id);
+  } else {
+    d.prepare(
+      "UPDATE job_duplicates SET status='dismissed', decided_at=? WHERE id=?",
+    ).run(nowIso(), id);
+  }
+
+  refreshDupFlags([a, b]);
+  return getDuplicateReview(id);
+}
+
+/**
+ * Drop all *pending* pairs and recompute review flags. Confirmed/dismissed
+ * decisions are kept, so a rescan never resurrects a pair a human already
+ * dismissed (re-detection updates the row but leaves its status alone).
+ */
+export function clearPendingDuplicates(): number {
+  const d = db();
+  const removed = (
+    d.prepare("SELECT COUNT(*) n FROM job_duplicates WHERE status='pending'").get() as Row
+  ).n as number;
+  d.prepare("DELETE FROM job_duplicates WHERE status='pending'").run();
+  d.exec(
+    `UPDATE jobs SET dup_review = CASE WHEN EXISTS (
+       SELECT 1 FROM job_duplicates d
+       WHERE d.status='pending' AND (d.job_id = jobs.id OR d.candidate_id = jobs.id)
+     ) THEN 1 ELSE 0 END`,
+  );
+  return removed;
+}
+
+export function pendingDuplicateCount(): number {
+  return (
+    db().prepare("SELECT COUNT(*) n FROM job_duplicates WHERE status='pending'").get() as Row
+  ).n as number;
 }
 
 // --- digests (stored in the DB, not files) ---

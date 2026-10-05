@@ -1,0 +1,12 @@
+[project]
+name = "applyflow-laya"
+version = "0.1.0"
+description = "Local Laya decision server for ApplyFlow's duplicate review."
+requires-python = ">=3.10"
+dependencies = [
+  "laya[serve]>=0.3.20",
+]
+
+[tool.uv]
+# This project is a dependency environment only — there is no package to build.
+package = false

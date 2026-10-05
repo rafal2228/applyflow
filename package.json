@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "laya:serve": "bash scripts/laya-serve.sh",
     "prepare": "husky",
     "lint:commit": "commitlint"
   },

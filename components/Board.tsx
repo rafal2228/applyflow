@@ -58,6 +58,7 @@ export default function Board({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showTools, setShowTools] = useState(false);
+  const [toolsTab, setToolsTab] = useState<string | undefined>(undefined);
   const [gradingIds, setGradingIds] = useState<Set<string>>(new Set());
   const [gradeRun, setGradeRun] = useState<GradeRunState | null>(null);
   const [dragOver, setDragOver] = useState<JobStatus | null>(null);
@@ -130,6 +131,8 @@ export default function Board({
       ).length,
     [jobs],
   );
+
+  const dupCount = useMemo(() => jobs.filter((j) => j.dupReview).length, [jobs]);
 
   const visible = useMemo(
     () => applyBoardFilters(jobs, filters, query),
@@ -249,7 +252,26 @@ export default function Board({
               {runningCount} running
             </Button>
           )}
-          <Button variant="outline" onClick={() => setShowTools(true)}>
+          {dupCount > 0 && (
+            <Button
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              onClick={() => {
+                setToolsTab("duplicates");
+                setShowTools(true);
+              }}
+            >
+              <GitMerge />
+              Duplicates ({dupCount})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => {
+              setToolsTab(undefined);
+              setShowTools(true);
+            }}
+          >
             <Settings2 />
             Tools
           </Button>
@@ -475,6 +497,7 @@ export default function Board({
         open={showTools}
         onOpenChange={setShowTools}
         onChanged={refresh}
+        initialTab={toolsTab}
       />
     </div>
   );

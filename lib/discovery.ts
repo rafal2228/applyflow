@@ -1,6 +1,7 @@
 import { ALL_SOURCES } from "./sources/index";
 import { passesIngestionFilter } from "./config";
 import { upsertJob } from "./db";
+import { recordDuplicateCandidates } from "./duplicates";
 
 /** Discovery sources exposed in the UI. */
 export interface SourceInfo {
@@ -62,6 +63,7 @@ export async function discover(
           const res = upsertJob(job);
           if (res === "inserted") row.inserted++;
           else if (res === "duplicate") row.duplicate++;
+          if (res !== "exists") recordDuplicateCandidates(job.id);
         }
         log(
           `${s.name}: fetched ${row.fetched}, +${row.inserted} new, ${row.duplicate} dup, ${row.filtered} off-target`,

@@ -1,4 +1,5 @@
 import { createJob, listJobs } from "@/lib/db";
+import { recordDuplicateCandidates } from "@/lib/duplicates";
 import type { NewJobInput } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,5 +31,6 @@ export async function POST(req: Request) {
       { status: 409 },
     );
   }
+  recordDuplicateCandidates(result.job.id);
   return Response.json({ job: result.job }, { status: 201 });
 }

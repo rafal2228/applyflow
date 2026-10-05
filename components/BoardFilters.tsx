@@ -185,6 +185,11 @@ export default function BoardFilters({
                 checked={filters.followUpDue}
                 onChange={(v) => set({ followUpDue: v })}
               />
+              <Toggle
+                label="Hide possible duplicates"
+                checked={filters.hideDuplicates}
+                onChange={(v) => set({ hideDuplicates: v })}
+              />
             </div>
 
             <Separator />

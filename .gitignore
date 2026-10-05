@@ -4,6 +4,11 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
+# python / uv environment for the Laya sidecar
+.venv/
+__pycache__/
+*.pyc
+
 # local database + generated output (per-machine state) — repo root only
 /data/
 /digest/
