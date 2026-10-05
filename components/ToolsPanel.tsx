@@ -284,7 +284,7 @@ export default function ToolsPanel({
           </TabsList>
 
           {/* ------------------------------- Find ------------------------------- */}
-          <TabsContent value="find" className="grid gap-4 pt-3">
+          <TabsContent value="find" className="grid min-h-0 gap-4 overflow-y-auto pt-3">
             <section className="rounded-lg border p-3">
               <div className="flex items-start gap-3">
                 <DownloadCloud className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -378,7 +378,7 @@ export default function ToolsPanel({
           </TabsContent>
 
           {/* ------------------------------- Jobs ------------------------------- */}
-          <TabsContent value="jobs" className="min-h-0 pt-3">
+          <TabsContent value="jobs" className="min-h-0 overflow-y-auto pt-3">
             {runs.length === 0 ? (
               <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center">
                 <ListChecks className="size-5 text-muted-foreground" />
@@ -471,7 +471,7 @@ export default function ToolsPanel({
           </TabsContent>
 
           {/* ------------------------------ Market ------------------------------ */}
-          <TabsContent value="market" className="grid gap-3 pt-3">
+          <TabsContent value="market" className="grid min-h-0 gap-3 overflow-y-auto pt-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
                 Matching postings — Poland{" "}
