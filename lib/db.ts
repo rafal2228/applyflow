@@ -1,6 +1,17 @@
 import { DatabaseSync } from "node:sqlite";
-import { existsSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 import type {
+  DuplicateDecision,
+  DuplicateReview,
+  DuplicateStatus,
   Grade,
   JobRow,
   JobStatus,
@@ -8,8 +19,16 @@ import type {
   NormalizedJob,
   RankResult,
 } from "./types";
-import { dedupKey, jobId, nowIso } from "./util";
+import type { Fingerprint } from "./fingerprint";
+import { dedupKey, jobId, nowIso, sha1 } from "./util";
 import { DB_PATH } from "./paths";
+
+// Next to the database: a marker that proves ApplyFlow has run here before, and
+// rolling pre-migration snapshots.
+const DATA_DIR = dirname(DB_PATH);
+const INIT_MARKER = join(DATA_DIR, ".applyflow-initialized");
+const BACKUP_DIR = join(DATA_DIR, "backups");
+const MAX_BACKUPS = 5;
 
 /**
  * ApplyFlow's local SQLite store. Everything the app does (discovery, grading,
@@ -74,22 +93,15 @@ CREATE TABLE IF NOT EXISTS digests (
 
 type Row = Record<string, unknown>;
 
-const g = globalThis as unknown as {
-  __applyflowDb?: DatabaseSync;
-  __applyflowSchemaVersion?: number;
-};
-
-/** Bump whenever SCHEMA or migrations change so cached connections re-migrate. */
-const SCHEMA_VERSION = 3;
+const g = globalThis as unknown as { __applyflowDb?: DatabaseSync };
 
 /**
- * Idempotent schema + migrations. Safe to run on every open: SCHEMA uses
- * CREATE TABLE/INDEX IF NOT EXISTS, and column adds are checked first. Running
- * this on cached connections is what heals a DB opened before a schema change
- * (e.g. across a Next.js hot-reload, where the connection survives).
+ * Reconcile columns on an already-open connection. Runs on every `db()` call so
+ * a connection opened before a schema change heals itself — a long-lived
+ * Next.js dev server survives hot-reloads, so a module-level schema-version flag
+ * can otherwise drift out of sync with the live connection.
  */
-function migrate(d: DatabaseSync): void {
-  d.exec(SCHEMA);
+function ensureColumns(d: DatabaseSync): void {
   const cols = (d.prepare("PRAGMA table_info(jobs)").all() as Row[]).map(
     (r) => r.name as string,
   );
@@ -100,24 +112,96 @@ function migrate(d: DatabaseSync): void {
   if (!cols.includes("cover_letter")) {
     d.exec("ALTER TABLE jobs ADD COLUMN cover_letter TEXT");
   }
+  if (!cols.includes("duplicate_of")) {
+    d.exec("ALTER TABLE jobs ADD COLUMN duplicate_of TEXT");
+  }
+  if (!cols.includes("dup_review")) {
+    d.exec("ALTER TABLE jobs ADD COLUMN dup_review INTEGER NOT NULL DEFAULT 0");
+    d.exec("CREATE INDEX IF NOT EXISTS idx_jobs_dup_review ON jobs(dup_review)");
+  }
+}
+
+/** Create tables/indexes if missing, then reconcile columns. */
+function migrate(d: DatabaseSync): void {
+  d.exec(SCHEMA);
+  ensureColumns(d);
+  // Created here too so a fresh database gets it (ensureColumns only runs the
+  // ALTER path on databases created before the column existed).
+  d.exec("CREATE INDEX IF NOT EXISTS idx_jobs_dup_review ON jobs(dup_review)");
+}
+
+/**
+ * Snapshot the database (and its WAL) before schema reconciliation, keeping the
+ * newest `MAX_BACKUPS` sets. Best-effort: a failed backup must never stop the app.
+ */
+function backupDatabase(): void {
+  try {
+    mkdirSync(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const src = `${DB_PATH}${suffix}`;
+      if (existsSync(src)) {
+        copyFileSync(
+          src,
+          join(BACKUP_DIR, `${basename(DB_PATH)}.${stamp}.bak${suffix}`),
+        );
+      }
+    }
+    const sets = readdirSync(BACKUP_DIR)
+      .filter((f) => f.endsWith(".bak"))
+      .sort()
+      .reverse();
+    for (const stale of sets.slice(MAX_BACKUPS)) {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        const p = join(BACKUP_DIR, `${stale}${suffix}`);
+        if (existsSync(p)) unlinkSync(p);
+      }
+    }
+  } catch (e) {
+    console.warn(`[applyflow] database backup failed: ${(e as Error).message}`);
+  }
+}
+
+/** Record that ApplyFlow has successfully opened a database here. */
+function markInitialized(): void {
+  try {
+    writeFileSync(INIT_MARKER, new Date().toISOString());
+  } catch {
+    /* best-effort */
+  }
 }
 
 function db(): DatabaseSync {
   const cached = g.__applyflowDb;
   if (cached) {
-    if (g.__applyflowSchemaVersion !== SCHEMA_VERSION) {
-      migrate(cached);
-      g.__applyflowSchemaVersion = SCHEMA_VERSION;
-    }
+    // Re-run migrations on the live connection too: a long-lived Next.js dev
+    // server keeps the same connection across hot-reloads, so tables added by a
+    // schema change must be reconciled here as well.
+    migrate(cached);
     return cached;
   }
-  const fresh = !existsSync(DB_PATH);
+
+  const existed = existsSync(DB_PATH);
+  // A missing database is only a genuine first run if ApplyFlow has never run
+  // in this directory. If it has, the file was deleted/replaced — starting from
+  // empty here would look like success while silently hiding the lost state.
+  if (!existed && existsSync(INIT_MARKER)) {
+    throw new Error(
+      `[applyflow] Refusing to start: ${DB_PATH} is missing but this data ` +
+        `directory holds an initialized database marker. Creating an empty ` +
+        `database would mask the loss. Restore the file (pre-migration ` +
+        `snapshots live in ${BACKUP_DIR}) or set JOBS_DB_PATH to a new location.`,
+    );
+  }
+
+  if (!existed) mkdirSync(DATA_DIR, { recursive: true });
+  if (existed) backupDatabase();
   const d = new DatabaseSync(DB_PATH);
   d.exec("PRAGMA journal_mode = WAL;");
   migrate(d);
   g.__applyflowDb = d;
-  g.__applyflowSchemaVersion = SCHEMA_VERSION;
-  if (fresh) console.warn(`[applyflow] created new jobs.db at ${DB_PATH}`);
+  markInitialized();
+  if (!existed) console.warn(`[applyflow] created new jobs.db at ${DB_PATH}`);
   return d;
 }
 
